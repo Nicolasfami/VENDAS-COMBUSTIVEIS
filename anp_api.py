@@ -14,7 +14,7 @@ TIMEOUT = 20
 MAX_PAGINAS = 20  # trava de segurança
 
 
-def _normalizar_municipio(municipio):
+def normalizar_municipio(municipio):
     """A base da ANP guarda os nomes de município em maiúsculas e sem acento
     (ex: 'JANDIRA', 'SAO PAULO'). Normalizamos a entrada do usuário pra bater
     com esse formato, senão a busca não retorna nada mesmo quando existe."""
@@ -27,7 +27,7 @@ def buscar_postos_por_cidade(uf, municipio):
     """Busca todos os postos de uma cidade direto na API oficial da ANP.
     Retorna lista de dicts (já no formato bruto da API) ou levanta exceção
     em caso de falha de rede."""
-    municipio_normalizado = _normalizar_municipio(municipio)
+    municipio_normalizado = normalizar_municipio(municipio)
     todos = []
     pagina = 1
     while pagina <= MAX_PAGINAS:
@@ -57,7 +57,7 @@ def buscar_postos_por_cidade(uf, municipio):
 def debug_requisicao(uf, municipio):
     """Faz a chamada crua pra API e devolve status/corpo da resposta,
     pra diagnosticar por que uma busca não retornou postos."""
-    params = {"uf": uf.upper().strip(), "municipio": _normalizar_municipio(municipio), "numeropagina": 1}
+    params = {"uf": uf.upper().strip(), "municipio": normalizar_municipio(municipio), "numeropagina": 1}
     try:
         resp = requests.get(BASE_URL, params=params, timeout=TIMEOUT)
         return {
