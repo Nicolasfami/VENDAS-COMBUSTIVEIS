@@ -7,7 +7,7 @@ st.set_page_config(page_title="Compradores", page_icon="🏪", layout="wide")
 db.init_db()
 common.inject_css()
 vendedor = common.seletor_vendedor_logado()
-common.header("Compradores", "Cadastro de clientes e histórico financeiro")
+common.header("Compradores", "Cadastro de clientes e histórico financeiro", icone="compradores")
 
 vendedores = db.get_vendedores()
 nomes_vendedores = {v["id"]: v["nome"] for v in vendedores}
