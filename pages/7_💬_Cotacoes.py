@@ -80,12 +80,18 @@ for co in cotacoes:
             with sub1:
                 if st.button("✅ Aceitar", key=f"aceitar_{co['id']}"):
                     db.update_cotacao_status(co["id"], "Aceita")
+                    comissao = db.get_comissao_produto(co["produto"])
+                    volume = co["volume_litros"] or 0
                     db.add_pedido({
                         "cotacao_id": co["id"], "comprador_cnpj": co["comprador_cnpj"],
                         "vendedor_id": co["vendedor_id"], "produto": co["produto"],
-                        "volume_litros": co["volume_litros"], "preco_unitario": co["preco_unitario"],
+                        "volume_litros": volume, "preco_unitario": co["preco_unitario"],
                         "valor_total": valor_total, "data_pedido": str(date.today()),
                         "status_entrega": "Pendente", "status_pagamento": "Em aberto",
+                        "comissao_vendedor_litro": comissao["comissao_vendedor_litro"],
+                        "comissao_empresa_litro": comissao["comissao_empresa_litro"],
+                        "comissao_vendedor_total": volume * comissao["comissao_vendedor_litro"],
+                        "comissao_empresa_total": volume * comissao["comissao_empresa_litro"],
                     })
                     st.success("Cotação aceita e pedido criado!")
                     st.rerun()
