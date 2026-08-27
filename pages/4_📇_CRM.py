@@ -7,7 +7,7 @@ st.set_page_config(page_title="CRM", page_icon="📇", layout="wide")
 db.init_db()
 common.inject_css()
 vendedor = common.seletor_vendedor_logado()
-common.header("CRM de Visitas", "Registro comercial posto a posto")
+common.header("CRM de Visitas", "Registro comercial posto a posto", icone="crm")
 
 uf_atual = st.session_state.get("uf_atual", "SP")
 municipio_atual = st.session_state.get("municipio_atual", "Jandira")
