@@ -263,15 +263,15 @@ for p in postos_ordenados:
         with cols[6]:
             with st.popover("💰 Vender"):
                 st.markdown(f"**Registrar venda — {p['razao_social']}**")
-                produto_venda = st.selectbox(
-                    "Produto", ["Gasolina", "Etanol", "Diesel S10", "Diesel S500", "Outro"],
-                    key=f"prod_{p['cnpj']}")
-                volume_venda = st.number_input(
-                    "Volume (litros)", min_value=0.0, step=100.0, key=f"vol_{p['cnpj']}")
-                preco_venda = st.number_input(
-                    "Preço unitário (R$/L)", min_value=0.0, step=0.01, format="%.2f", key=f"preco_{p['cnpj']}")
+                with st.form(key=f"form_vender_{p['cnpj']}"):
+                    produto_venda = st.selectbox(
+                        "Produto", ["Gasolina", "Etanol", "Diesel S10", "Diesel S500", "Outro"])
+                    volume_venda = st.number_input("Volume (litros)", min_value=0.0, step=100.0)
+                    preco_venda = st.number_input(
+                        "Preço unitário (R$/L)", min_value=0.0, step=0.01, format="%.2f")
+                    confirmou_venda = st.form_submit_button("✅ Confirmar venda", type="primary")
 
-                if st.button("✅ Confirmar venda", key=f"vender_{p['cnpj']}", type="primary"):
+                if confirmou_venda:
                     if volume_venda <= 0 or preco_venda <= 0:
                         st.warning("Preencha volume e preço antes de confirmar.")
                     else:
@@ -304,21 +304,18 @@ for p in postos_ordenados:
                 st.markdown(f"**Dados comerciais — {p['razao_social']}**")
                 status_opcoes = ["Não visitado", "Visitado", "Sem interesse", "Interessado",
                                   "Cotação enviada", "Negociando", "Retornar", "Cliente"]
-                status_crm = st.selectbox("Status", status_opcoes,
-                                           index=status_opcoes.index(p.get("status") or "Não visitado"),
-                                           key=f"crmstatus_{p['cnpj']}")
-                responsavel_crm = st.text_input("Responsável", value=p.get("responsavel") or "",
-                                                 key=f"crmresp_{p['cnpj']}")
-                telefone_crm = st.text_input("Telefone", value=p.get("telefone") or "",
-                                              key=f"crmtel_{p['cnpj']}")
-                whatsapp_crm = st.text_input("WhatsApp", value=p.get("whatsapp") or "",
-                                              key=f"crmwpp_{p['cnpj']}")
-                fornecedor_crm = st.text_input("Fornecedor atual", value=p.get("fornecedor_atual") or "",
-                                                key=f"crmforn_{p['cnpj']}")
-                obs_crm = st.text_area("Observações", value=p.get("observacoes") or "",
-                                        key=f"crmobs_{p['cnpj']}")
 
-                if st.button("💾 Salvar", key=f"crmsave_{p['cnpj']}", type="primary"):
+                with st.form(key=f"form_crm_{p['cnpj']}"):
+                    status_crm = st.selectbox("Status", status_opcoes,
+                                               index=status_opcoes.index(p.get("status") or "Não visitado"))
+                    responsavel_crm = st.text_input("Responsável", value=p.get("responsavel") or "")
+                    telefone_crm = st.text_input("Telefone", value=p.get("telefone") or "")
+                    whatsapp_crm = st.text_input("WhatsApp", value=p.get("whatsapp") or "")
+                    fornecedor_crm = st.text_input("Fornecedor atual", value=p.get("fornecedor_atual") or "")
+                    obs_crm = st.text_area("Observações", value=p.get("observacoes") or "")
+                    salvou_crm = st.form_submit_button("💾 Salvar", type="primary")
+
+                if salvou_crm:
                     db.update_crm(p["cnpj"], {
                         "status": status_crm, "responsavel": responsavel_crm,
                         "telefone": telefone_crm, "whatsapp": whatsapp_crm,
@@ -329,12 +326,14 @@ for p in postos_ordenados:
                     st.rerun()
 
                 st.markdown("---")
-                nota_rapida = st.text_area("Adicionar ao histórico", key=f"nota_{p['cnpj']}", height=68)
-                if st.button("➕ Adicionar ao histórico", key=f"notabtn_{p['cnpj']}"):
-                    if nota_rapida.strip():
-                        db.add_historico(p["cnpj"], str(date.today()), nota_rapida.strip())
-                        st.success("Adicionado!")
-                        st.rerun()
+                with st.form(key=f"form_nota_{p['cnpj']}"):
+                    nota_rapida = st.text_area("Adicionar ao histórico", height=68)
+                    adicionou_nota = st.form_submit_button("➕ Adicionar ao histórico")
+
+                if adicionou_nota and nota_rapida.strip():
+                    db.add_historico(p["cnpj"], str(date.today()), nota_rapida.strip())
+                    st.success("Adicionado!")
+                    st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
 st.caption(f"✅ {len(st.session_state['selecionados'])} posto(s) selecionado(s) para rota (aba Rota)")
