@@ -3,15 +3,15 @@ from datetime import date
 import db
 import common
 
-st.set_page_config(page_title="Painel de Vendas — Combustíveis", page_icon="⛽", layout="wide")
+st.set_page_config(page_title="PetroSales — CRM de Vendas de Combustíveis", page_icon="⛽", layout="wide")
 db.init_db()
 common.inject_css()
 
 vendedor = common.seletor_vendedor_logado()
 
 common.header(
-    "Painel de Vendas",
-    "Prospecção e vendas de combustíveis · roda em paralelo ao Operax",
+    "PetroSales",
+    "CRM de Vendas de Combustíveis · Prospecção · Rotas · Negociações · Resultados",
 )
 
 mes_atual = date.today().strftime("%Y-%m")
