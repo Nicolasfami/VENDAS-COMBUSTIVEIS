@@ -7,7 +7,7 @@ st.set_page_config(page_title="Rota", page_icon="🚗", layout="wide")
 db.init_db()
 common.inject_css()
 common.seletor_vendedor_logado()
-common.header("Rota de Visitas", "Sequência otimizada + link direto pro Google Maps")
+common.header("Rota de Visitas", "Sequência otimizada + link direto pro Google Maps", icone="rota")
 
 uf_atual = st.session_state.get("uf_atual", "SP")
 municipio_atual = st.session_state.get("municipio_atual", "Jandira")
