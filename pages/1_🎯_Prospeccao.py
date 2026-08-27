@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
+from datetime import date
 import db
 import common
 import anp_api
@@ -111,11 +112,12 @@ with st.sidebar:
         buscar_api = False
 
     st.markdown("### ⚖️ Pesos do score")
-    peso_bandeira_branca = st.slider("Bandeira branca", 0, 60, 40)
-    peso_diesel = st.slider("Comercializa diesel", 0, 30, 15)
-    peso_linha_completa = st.slider("Linha completa", 0, 30, 10)
-    peso_alta_tancagem = st.slider("Alta tancagem (≥60m³)", 0, 30, 20)
-    peso_nunca_visitado = st.slider("Nunca visitado", 0, 20, 5)
+    with st.expander("Ajustar pesos (avançado)", expanded=False):
+        peso_bandeira_branca = st.slider("Bandeira branca", 0, 60, 40)
+        peso_diesel = st.slider("Comercializa diesel", 0, 30, 15)
+        peso_linha_completa = st.slider("Linha completa", 0, 30, 10)
+        peso_alta_tancagem = st.slider("Alta tancagem (≥60m³)", 0, 30, 20)
+        peso_nunca_visitado = st.slider("Nunca visitado", 0, 20, 5)
 
 pesos = {
     "bandeira_branca": peso_bandeira_branca,
@@ -211,7 +213,7 @@ if "selecionados" not in st.session_state:
 for p in postos_ordenados:
     with st.container():
         st.markdown('<div class="op-card">', unsafe_allow_html=True)
-        cols = st.columns([0.4, 3, 1.3, 1.3, 1.4, 1.2])
+        cols = st.columns([0.4, 2.3, 1.1, 1, 1.2, 0.9, 0.9, 0.9])
         with cols[0]:
             checked = st.checkbox("", key=f"chk_{p['cnpj']}",
                                    value=p["cnpj"] in st.session_state["selecionados"])
@@ -258,6 +260,81 @@ for p in postos_ordenados:
                     st.write("Motivos do score:")
                     for m in p["motivos"]:
                         st.write(f"- {m}")
+        with cols[6]:
+            with st.popover("💰 Vender"):
+                st.markdown(f"**Registrar venda — {p['razao_social']}**")
+                produto_venda = st.selectbox(
+                    "Produto", ["Gasolina", "Etanol", "Diesel S10", "Diesel S500", "Outro"],
+                    key=f"prod_{p['cnpj']}")
+                volume_venda = st.number_input(
+                    "Volume (litros)", min_value=0.0, step=100.0, key=f"vol_{p['cnpj']}")
+                preco_venda = st.number_input(
+                    "Preço unitário (R$/L)", min_value=0.0, step=0.01, format="%.2f", key=f"preco_{p['cnpj']}")
+
+                if st.button("✅ Confirmar venda", key=f"vender_{p['cnpj']}", type="primary"):
+                    if volume_venda <= 0 or preco_venda <= 0:
+                        st.warning("Preencha volume e preço antes de confirmar.")
+                    else:
+                        if not db.get_comprador(p["cnpj"]):
+                            db.upsert_comprador(p["cnpj"], {
+                                "razao_social": p["razao_social"], "tipo": "Posto revendedor",
+                                "endereco": p["endereco"], "municipio": p["municipio"], "uf": p["uf"],
+                                "vendedor_id": vendedor["id"] if vendedor else None,
+                                "data_cadastro": str(date.today()),
+                            })
+                        comissao = db.get_comissao_produto(produto_venda)
+                        valor_total_venda = volume_venda * preco_venda
+                        db.add_pedido({
+                            "comprador_cnpj": p["cnpj"], "vendedor_id": vendedor["id"] if vendedor else None,
+                            "produto": produto_venda, "volume_litros": volume_venda,
+                            "preco_unitario": preco_venda, "valor_total": valor_total_venda,
+                            "data_pedido": str(date.today()), "status_entrega": "Pendente",
+                            "status_pagamento": "Em aberto",
+                            "comissao_vendedor_litro": comissao["comissao_vendedor_litro"],
+                            "comissao_empresa_litro": comissao["comissao_empresa_litro"],
+                            "comissao_vendedor_total": volume_venda * comissao["comissao_vendedor_litro"],
+                            "comissao_empresa_total": volume_venda * comissao["comissao_empresa_litro"],
+                        })
+                        db.update_crm(p["cnpj"], {"status": "Cliente",
+                                                   "vendedor_id": vendedor["id"] if vendedor else None})
+                        st.success(f"Venda de {volume_venda:,.0f} L registrada! Posto virou Cliente.")
+                        st.rerun()
+        with cols[7]:
+            with st.popover("📇 CRM"):
+                st.markdown(f"**Dados comerciais — {p['razao_social']}**")
+                status_opcoes = ["Não visitado", "Visitado", "Sem interesse", "Interessado",
+                                  "Cotação enviada", "Negociando", "Retornar", "Cliente"]
+                status_crm = st.selectbox("Status", status_opcoes,
+                                           index=status_opcoes.index(p.get("status") or "Não visitado"),
+                                           key=f"crmstatus_{p['cnpj']}")
+                responsavel_crm = st.text_input("Responsável", value=p.get("responsavel") or "",
+                                                 key=f"crmresp_{p['cnpj']}")
+                telefone_crm = st.text_input("Telefone", value=p.get("telefone") or "",
+                                              key=f"crmtel_{p['cnpj']}")
+                whatsapp_crm = st.text_input("WhatsApp", value=p.get("whatsapp") or "",
+                                              key=f"crmwpp_{p['cnpj']}")
+                fornecedor_crm = st.text_input("Fornecedor atual", value=p.get("fornecedor_atual") or "",
+                                                key=f"crmforn_{p['cnpj']}")
+                obs_crm = st.text_area("Observações", value=p.get("observacoes") or "",
+                                        key=f"crmobs_{p['cnpj']}")
+
+                if st.button("💾 Salvar", key=f"crmsave_{p['cnpj']}", type="primary"):
+                    db.update_crm(p["cnpj"], {
+                        "status": status_crm, "responsavel": responsavel_crm,
+                        "telefone": telefone_crm, "whatsapp": whatsapp_crm,
+                        "fornecedor_atual": fornecedor_crm, "observacoes": obs_crm,
+                        "vendedor_id": vendedor["id"] if vendedor else None,
+                    })
+                    st.success("Dados salvos!")
+                    st.rerun()
+
+                st.markdown("---")
+                nota_rapida = st.text_area("Adicionar ao histórico", key=f"nota_{p['cnpj']}", height=68)
+                if st.button("➕ Adicionar ao histórico", key=f"notabtn_{p['cnpj']}"):
+                    if nota_rapida.strip():
+                        db.add_historico(p["cnpj"], str(date.today()), nota_rapida.strip())
+                        st.success("Adicionado!")
+                        st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
 st.caption(f"✅ {len(st.session_state['selecionados'])} posto(s) selecionado(s) para rota (aba Rota)")
