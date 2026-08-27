@@ -38,6 +38,19 @@ PALETTE = {
 }
 
 
+def mostrar_logo():
+    """Mostra a logo do PetroSales no topo da barra lateral, acima do menu
+    de navegação (recurso nativo do Streamlit: st.logo)."""
+    logo_path = ICONS_DIR / "logo_petrosales.png"
+    icone_path = ICONS_DIR / "logo_icone.png"
+    if logo_path.exists():
+        st.logo(
+            str(logo_path),
+            icon_image=str(icone_path) if icone_path.exists() else None,
+            size="large",
+        )
+
+
 def inject_css():
     st.markdown(f"""
     <link rel="preconnect" href="https://fonts.googleapis.com">
