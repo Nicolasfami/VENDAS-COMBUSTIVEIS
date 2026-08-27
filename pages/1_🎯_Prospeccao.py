@@ -9,6 +9,7 @@ import anp_api
 st.set_page_config(page_title="Prospecção", page_icon="🎯", layout="wide")
 db.init_db()
 common.inject_css()
+common.mostrar_logo()
 vendedor = common.seletor_vendedor_logado()
 common.header("Prospecção de Postos", "Base oficial da ANP — revendedores varejistas de combustíveis automotivos", icone="prospeccao")
 
