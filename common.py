@@ -6,7 +6,22 @@ Componentes visuais e de sessão compartilhados entre todas as páginas:
 - seletor de vendedor logado (controle leve por PIN, não é autenticação forte)
 """
 import streamlit as st
+import base64
+from pathlib import Path
 import db
+
+ICONS_DIR = Path(__file__).parent / "assets" / "icons"
+
+
+@st.cache_data
+def _icon_b64(nome_arquivo):
+    """Carrega um ícone PNG de assets/icons/ e devolve em base64 (cacheado)."""
+    caminho = ICONS_DIR / nome_arquivo
+    if not caminho.exists():
+        return None
+    with open(caminho, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
 
 PALETTE = {
     "bg": "#0B1220",
@@ -127,9 +142,15 @@ def inject_css():
     """, unsafe_allow_html=True)
 
 
-def header(titulo, subtitulo=""):
+def header(titulo, subtitulo="", icone=None):
+    icon_html = ""
+    if icone:
+        b64 = _icon_b64(f"nav_{icone}.png")
+        if b64:
+            icon_html = f'<img src="data:image/png;base64,{b64}" style="height:54px;width:auto" />'
     st.markdown(f"""
     <div class="op-header">
+        {icon_html}
         <div>
             <p class="op-brand">⛽ PetroSales</p>
             <p class="op-title">{titulo}</p>
@@ -137,6 +158,13 @@ def header(titulo, subtitulo=""):
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+
+def pin_icon_path(nome):
+    """Caminho absoluto pro arquivo de ícone de pin (assets/icons/pin_*.png),
+    pra usar com folium.CustomIcon() na página de Mapa."""
+    caminho = ICONS_DIR / f"pin_{nome}.png"
+    return str(caminho) if caminho.exists() else None
 
 
 def gauge_svg(percentual, label="META", size=150):
