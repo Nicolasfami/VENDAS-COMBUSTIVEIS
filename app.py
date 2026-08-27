@@ -6,6 +6,7 @@ import common
 st.set_page_config(page_title="PetroSales — CRM de Vendas de Combustíveis", page_icon="⛽", layout="wide")
 db.init_db()
 common.inject_css()
+common.mostrar_logo()
 
 vendedor = common.seletor_vendedor_logado()
 
