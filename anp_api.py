@@ -43,6 +43,21 @@ def buscar_postos_por_cidade(uf, municipio):
     return todos
 
 
+def debug_requisicao(uf, municipio):
+    """Faz a chamada crua pra API e devolve status/corpo da resposta,
+    pra diagnosticar por que uma busca não retornou postos."""
+    params = {"uf": uf, "municipio": municipio, "numeropagina": 1}
+    try:
+        resp = requests.get(BASE_URL, params=params, timeout=TIMEOUT)
+        return {
+            "url_final": resp.url,
+            "status_code": resp.status_code,
+            "corpo": resp.text[:2000],
+        }
+    except Exception as e:
+        return {"erro": str(e)}
+
+
 def buscar_posto_por_cnpj(cnpj):
     """Busca um único posto pelo CNPJ."""
     params = {"cnpj": cnpj}
