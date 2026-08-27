@@ -7,6 +7,7 @@ import common
 st.set_page_config(page_title="Comissões", page_icon="💰", layout="wide")
 db.init_db()
 common.inject_css()
+common.mostrar_logo()
 common.seletor_vendedor_logado()
 common.header("Comissões", "Tabela de comissão por produto e totais por vendedor/empresa")
 
@@ -27,6 +28,15 @@ st.caption(
     "e o que fica de margem pra empresa/refinaria. Ex: R$ 0,01/L de comissão do "
     "vendedor + R$ 0,03/L de margem da empresa."
 )
+
+col_info, col_btn = st.columns([3, 1])
+with col_btn:
+    if st.button("🔄 Recalcular comissões", use_container_width=True,
+                  help="Reaplica a taxa atual em TODOS os pedidos já existentes "
+                       "(útil se você configurou a comissão depois de já ter vendido)."):
+        qtd = db.recalcular_comissoes_pedidos()
+        st.success(f"{qtd} pedido(s) recalculado(s) com a comissão atual!")
+        st.rerun()
 
 produtos_padrao = ["Gasolina", "Etanol", "Diesel S10", "Diesel S500", "Outro"]
 comissoes_existentes = {c["produto"]: c for c in db.get_comissoes_produto()}
