@@ -6,6 +6,7 @@ Vantagem sobre o CSV: já traz produtos comercializados, tancagem por produto,
 quantidade de bicos e latitude/longitude — sem precisar geocodificar nem
 preencher manualmente.
 """
+import unicodedata
 import requests
 
 BASE_URL = "https://revendedoresapi.anp.gov.br/v1/combustivel"
@@ -13,14 +14,24 @@ TIMEOUT = 20
 MAX_PAGINAS = 20  # trava de segurança
 
 
+def _normalizar_municipio(municipio):
+    """A base da ANP guarda os nomes de município em maiúsculas e sem acento
+    (ex: 'JANDIRA', 'SAO PAULO'). Normalizamos a entrada do usuário pra bater
+    com esse formato, senão a busca não retorna nada mesmo quando existe."""
+    nfkd = unicodedata.normalize("NFKD", municipio.strip())
+    sem_acento = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return sem_acento.upper()
+
+
 def buscar_postos_por_cidade(uf, municipio):
     """Busca todos os postos de uma cidade direto na API oficial da ANP.
     Retorna lista de dicts (já no formato bruto da API) ou levanta exceção
     em caso de falha de rede."""
+    municipio_normalizado = _normalizar_municipio(municipio)
     todos = []
     pagina = 1
     while pagina <= MAX_PAGINAS:
-        params = {"uf": uf, "municipio": municipio, "numeropagina": pagina}
+        params = {"uf": uf.upper().strip(), "municipio": municipio_normalizado, "numeropagina": pagina}
         resp = requests.get(BASE_URL, params=params, timeout=TIMEOUT)
         resp.raise_for_status()
         payload = resp.json()
@@ -46,7 +57,7 @@ def buscar_postos_por_cidade(uf, municipio):
 def debug_requisicao(uf, municipio):
     """Faz a chamada crua pra API e devolve status/corpo da resposta,
     pra diagnosticar por que uma busca não retornou postos."""
-    params = {"uf": uf, "municipio": municipio, "numeropagina": 1}
+    params = {"uf": uf.upper().strip(), "municipio": _normalizar_municipio(municipio), "numeropagina": 1}
     try:
         resp = requests.get(BASE_URL, params=params, timeout=TIMEOUT)
         return {
