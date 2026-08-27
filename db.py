@@ -174,11 +174,30 @@ def init_db():
             status_pagamento TEXT DEFAULT 'Em aberto',
             forma_pagamento TEXT,
             observacoes TEXT,
+            comissao_vendedor_litro REAL DEFAULT 0,
+            comissao_empresa_litro REAL DEFAULT 0,
+            comissao_vendedor_total REAL DEFAULT 0,
+            comissao_empresa_total REAL DEFAULT 0,
             FOREIGN KEY (cotacao_id) REFERENCES cotacoes (id),
             FOREIGN KEY (comprador_cnpj) REFERENCES compradores (cnpj),
             FOREIGN KEY (vendedor_id) REFERENCES vendedores (id)
         )
     """)
+
+    # ---------- TABELA DE COMISSÃO POR PRODUTO ----------
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS comissoes_produto (
+            produto TEXT PRIMARY KEY,
+            comissao_vendedor_litro REAL DEFAULT 0,
+            comissao_empresa_litro REAL DEFAULT 0
+        )
+    """)
+
+    # Migração segura: adiciona colunas de comissão em bancos já existentes
+    # (não apaga nem altera dados já cadastrados)
+    for coluna in ["comissao_vendedor_litro", "comissao_empresa_litro",
+                   "comissao_vendedor_total", "comissao_empresa_total"]:
+        cur.execute(f"ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS {coluna} REAL DEFAULT 0")
 
     conn.commit()
     conn.close()
@@ -548,6 +567,67 @@ def get_serie_mensal_vendas(meses=6):
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return list(reversed(rows))
+
+
+def get_comissao_produto(produto):
+    """Retorna a comissão configurada (R$/L) pra um produto, ou zeros se não configurado."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM comissoes_produto WHERE produto = %s", (produto,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    return {"produto": produto, "comissao_vendedor_litro": 0, "comissao_empresa_litro": 0}
+
+
+def get_comissoes_produto():
+    """Lista a tabela de comissão de todos os produtos cadastrados."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM comissoes_produto ORDER BY produto")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def upsert_comissao_produto(produto, comissao_vendedor_litro, comissao_empresa_litro):
+    """Define/atualiza a comissão (R$/L) de vendedor e empresa pra um produto."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO comissoes_produto (produto, comissao_vendedor_litro, comissao_empresa_litro)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (produto) DO UPDATE SET
+            comissao_vendedor_litro = excluded.comissao_vendedor_litro,
+            comissao_empresa_litro = excluded.comissao_empresa_litro
+    """, (produto, comissao_vendedor_litro, comissao_empresa_litro))
+    conn.commit()
+    conn.close()
+
+
+def get_comissoes_por_vendedor(mes_ano=None):
+    """Soma a comissão de cada vendedor (e da empresa) nos pedidos, opcionalmente
+    filtrando por mês (formato 'YYYY-MM')."""
+    conn = get_conn()
+    cur = conn.cursor()
+    query = """
+        SELECT v.id, v.nome,
+               COALESCE(SUM(pe.comissao_vendedor_total), 0) as comissao_vendedor,
+               COALESCE(SUM(pe.comissao_empresa_total), 0) as comissao_empresa,
+               COALESCE(SUM(pe.volume_litros), 0) as volume_total
+        FROM vendedores v
+        LEFT JOIN pedidos pe ON pe.vendedor_id = v.id
+    """
+    params = []
+    if mes_ano:
+        query += " AND LEFT(pe.data_pedido, 7) = %s"
+        params.append(mes_ano)
+    query += " GROUP BY v.id, v.nome ORDER BY comissao_vendedor DESC"
+    cur.execute(query, params)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
 
 
 def get_volume_por_vendedor(mes_ano=None):
