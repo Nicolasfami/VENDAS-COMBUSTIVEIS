@@ -606,6 +606,41 @@ def upsert_comissao_produto(produto, comissao_vendedor_litro, comissao_empresa_l
     conn.close()
 
 
+def recalcular_comissoes_pedidos():
+    """Reaplica a tabela de comissão ATUAL em todos os pedidos já existentes.
+    Útil quando você configura/ajusta a comissão depois de já ter vendas
+    registradas. Retorna quantos pedidos foram atualizados."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT id, produto, volume_litros FROM pedidos")
+    pedidos = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("SELECT * FROM comissoes_produto")
+    tabela = {c["produto"]: dict(c) for c in cur.fetchall()}
+
+    atualizados = 0
+    for p in pedidos:
+        comissao = tabela.get(p["produto"], {"comissao_vendedor_litro": 0, "comissao_empresa_litro": 0})
+        volume = p["volume_litros"] or 0
+        cur.execute("""
+            UPDATE pedidos SET
+                comissao_vendedor_litro = %s,
+                comissao_empresa_litro = %s,
+                comissao_vendedor_total = %s,
+                comissao_empresa_total = %s
+            WHERE id = %s
+        """, (
+            comissao["comissao_vendedor_litro"], comissao["comissao_empresa_litro"],
+            volume * comissao["comissao_vendedor_litro"], volume * comissao["comissao_empresa_litro"],
+            p["id"],
+        ))
+        atualizados += 1
+
+    conn.commit()
+    conn.close()
+    return atualizados
+
+
 def get_comissoes_por_vendedor(mes_ano=None):
     """Soma a comissão de cada vendedor (e da empresa) nos pedidos, opcionalmente
     filtrando por mês (formato 'YYYY-MM')."""
