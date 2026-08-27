@@ -1,92 +1,102 @@
 import streamlit as st
-from datetime import date
+from datetime import date, timedelta
 import db
 import common
 
-st.set_page_config(page_title="Compradores", page_icon="🏪", layout="wide")
+st.set_page_config(page_title="Cotações", page_icon="💬", layout="wide")
 db.init_db()
 common.inject_css()
 vendedor = common.seletor_vendedor_logado()
-common.header("Compradores", "Cadastro de clientes e histórico financeiro", icone="compradores")
-
-vendedores = db.get_vendedores()
-nomes_vendedores = {v["id"]: v["nome"] for v in vendedores}
-
-with st.expander("➕ Novo comprador (cadastro manual)"):
-    st.caption("Postos vindos da Prospecção também podem ser convertidos direto na página CRM.")
-    c1, c2 = st.columns(2)
-    with c1:
-        cnpj = st.text_input("CNPJ (só números)")
-        razao_social = st.text_input("Razão social")
-        tipo = st.selectbox("Tipo", ["Posto revendedor", "Frota", "Indústria", "TRR", "Outro"])
-        endereco = st.text_input("Endereço")
-        municipio = st.text_input("Município")
-        uf_c = st.text_input("UF", max_chars=2)
-    with c2:
-        telefone = st.text_input("Telefone")
-        whatsapp = st.text_input("WhatsApp")
-        vendedor_responsavel = st.selectbox(
-            "Vendedor responsável", options=list(nomes_vendedores.keys()) or [None],
-            format_func=lambda x: nomes_vendedores.get(x, "—"))
-        condicao_pagamento = st.text_input("Condição de pagamento", placeholder="Ex: 30 dias, à vista...")
-        limite_credito = st.number_input("Limite de crédito (R$)", min_value=0.0, step=1000.0)
-    observacoes = st.text_area("Observações")
-
-    if st.button("Cadastrar comprador", type="primary"):
-        if cnpj.strip() and razao_social.strip():
-            db.upsert_comprador(cnpj.strip(), {
-                "razao_social": razao_social.strip(), "tipo": tipo, "endereco": endereco,
-                "municipio": municipio, "uf": uf_c.upper(), "telefone": telefone, "whatsapp": whatsapp,
-                "vendedor_id": vendedor_responsavel, "condicao_pagamento": condicao_pagamento,
-                "limite_credito": limite_credito, "observacoes": observacoes,
-                "data_cadastro": str(date.today()),
-            })
-            st.success(f"{razao_social} cadastrado!")
-            st.rerun()
-        else:
-            st.warning("Informe ao menos CNPJ e razão social.")
-
-st.markdown("---")
-st.subheader("Compradores cadastrados")
+common.header("Cotações", "Propostas em aberto para compradores", icone="cotacoes")
 
 compradores = db.get_compradores()
 if not compradores:
-    st.info("Nenhum comprador cadastrado ainda.")
+    st.info("Cadastre compradores primeiro na página **Compradores**.")
     st.stop()
 
-filtro_vendedor = st.selectbox(
-    "Filtrar por vendedor", options=[None] + list(nomes_vendedores.keys()),
-    format_func=lambda x: "Todos" if x is None else nomes_vendedores.get(x, "—"))
+nomes_compradores = {c["cnpj"]: c["razao_social"] for c in compradores}
 
-lista = db.get_compradores(vendedor_id=filtro_vendedor) if filtro_vendedor else compradores
+with st.expander("➕ Nova cotação"):
+    c1, c2 = st.columns(2)
+    with c1:
+        comprador_cnpj = st.selectbox("Comprador", options=list(nomes_compradores.keys()),
+                                       format_func=lambda x: nomes_compradores[x])
+        produto = st.selectbox("Produto", ["Gasolina", "Etanol", "Diesel S10", "Diesel S500", "Outro"])
+        volume_litros = st.number_input("Volume (litros)", min_value=0.0, step=100.0)
+    with c2:
+        preco_unitario = st.number_input("Preço unitário (R$/L)", min_value=0.0, step=0.01, format="%.2f")
+        validade = st.date_input("Válida até", value=date.today() + timedelta(days=7))
+        observacoes = st.text_area("Observações")
 
-for c in lista:
-    pedidos_c = db.get_pedidos(comprador_cnpj=c["cnpj"])
-    volume_total = sum(p["volume_litros"] or 0 for p in pedidos_c)
-    valor_total = sum(p["valor_total"] or 0 for p in pedidos_c)
-    em_aberto = sum(p["valor_total"] or 0 for p in pedidos_c if p["status_pagamento"] == "Em aberto")
+    if st.button("Registrar cotação", type="primary"):
+        cotacao_id = db.add_cotacao({
+            "comprador_cnpj": comprador_cnpj,
+            "vendedor_id": vendedor["id"] if vendedor else None,
+            "produto": produto,
+            "volume_litros": volume_litros,
+            "preco_unitario": preco_unitario,
+            "data_cotacao": str(date.today()),
+            "validade": str(validade),
+            "status": "Pendente",
+            "observacoes": observacoes,
+        })
+        st.success(f"Cotação #{cotacao_id} registrada!")
+        st.rerun()
 
-    with st.container():
-        st.markdown('<div class="op-card">', unsafe_allow_html=True)
-        cols = st.columns([2.5, 1.3, 1.3, 1.3, 1.3])
-        with cols[0]:
-            st.markdown(f"**{c['razao_social']}**")
-            st.caption(f"{c['tipo']} · {c.get('municipio') or ''}/{c.get('uf') or ''} · CNPJ {c['cnpj']}")
-        with cols[1]:
-            st.metric("Volume total", f"{volume_total:,.0f} L")
-        with cols[2]:
-            st.metric("Faturado", f"R$ {valor_total:,.2f}")
-        with cols[3]:
-            cor = "op-badge-red" if em_aberto > 0 else "op-badge-green"
-            st.markdown(f"<span class='op-badge {cor}'>Em aberto: R$ {em_aberto:,.2f}</span>", unsafe_allow_html=True)
-        with cols[4]:
-            with st.popover("Histórico"):
-                if pedidos_c:
-                    for p in pedidos_c:
-                        st.write(
-                            f"{p['data_pedido']} — {p['produto']} — {p['volume_litros']:,.0f} L — "
-                            f"R$ {p['valor_total']:,.2f} — {p['status_pagamento']}"
-                        )
-                else:
-                    st.caption("Nenhum pedido registrado ainda.")
-        st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("---")
+filtro_status = st.selectbox("Filtrar por status", [None, "Pendente", "Aceita", "Recusada", "Expirada"],
+                              format_func=lambda x: "Todas" if x is None else x)
+cotacoes = db.get_cotacoes(status=filtro_status)
+
+if not cotacoes:
+    st.info("Nenhuma cotação registrada ainda.")
+    st.stop()
+
+BADGE_STATUS = {
+    "Pendente": "op-badge-b", "Aceita": "op-badge-green",
+    "Recusada": "op-badge-red", "Expirada": "op-badge-c",
+}
+
+for co in cotacoes:
+    valor_total = (co["volume_litros"] or 0) * (co["preco_unitario"] or 0)
+    st.markdown('<div class="op-card op-accent">', unsafe_allow_html=True)
+    cols = st.columns([2.2, 1.2, 1.2, 1.2, 1.5, 1.7])
+    with cols[0]:
+        st.markdown(f"**{co['comprador_nome']}**")
+        st.caption(f"Vendedor: {co['vendedor_nome'] or '—'} · {co['data_cotacao']}")
+    with cols[1]:
+        st.write(co["produto"])
+    with cols[2]:
+        st.write(f"{co['volume_litros']:,.0f} L")
+    with cols[3]:
+        st.write(f"R$ {co['preco_unitario']:.2f}/L")
+    with cols[4]:
+        st.markdown(f"<span class='op-badge {BADGE_STATUS.get(co['status'], 'op-badge-c')}'>{co['status']}</span> "
+                     f"<br><span class='op-mono' style='font-size:12px'>R$ {valor_total:,.2f}</span>",
+                     unsafe_allow_html=True)
+    with cols[5]:
+        if co["status"] == "Pendente":
+            sub1, sub2 = st.columns(2)
+            with sub1:
+                if st.button("✅ Aceitar", key=f"aceitar_{co['id']}"):
+                    db.update_cotacao_status(co["id"], "Aceita")
+                    comissao = db.get_comissao_produto(co["produto"])
+                    volume = co["volume_litros"] or 0
+                    db.add_pedido({
+                        "cotacao_id": co["id"], "comprador_cnpj": co["comprador_cnpj"],
+                        "vendedor_id": co["vendedor_id"], "produto": co["produto"],
+                        "volume_litros": volume, "preco_unitario": co["preco_unitario"],
+                        "valor_total": valor_total, "data_pedido": str(date.today()),
+                        "status_entrega": "Pendente", "status_pagamento": "Em aberto",
+                        "comissao_vendedor_litro": comissao["comissao_vendedor_litro"],
+                        "comissao_empresa_litro": comissao["comissao_empresa_litro"],
+                        "comissao_vendedor_total": volume * comissao["comissao_vendedor_litro"],
+                        "comissao_empresa_total": volume * comissao["comissao_empresa_litro"],
+                    })
+                    st.success("Cotação aceita e pedido criado!")
+                    st.rerun()
+            with sub2:
+                if st.button("❌ Recusar", key=f"recusar_{co['id']}"):
+                    db.update_cotacao_status(co["id"], "Recusada")
+                    st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
