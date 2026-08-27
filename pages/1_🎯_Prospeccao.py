@@ -107,6 +107,7 @@ if buscar_api:
             postos_api = anp_api.buscar_postos_por_cidade(uf, municipio)
             if not postos_api:
                 st.sidebar.warning("Nenhum posto encontrado para essa região.")
+                st.session_state["debug_api"] = anp_api.debug_requisicao(uf, municipio)
             else:
                 db.upsert_postos_api(postos_api)
                 st.session_state["uf_atual"] = uf
@@ -133,10 +134,14 @@ postos = db.get_postos_by_city(uf_atual, municipio_atual)
 
 if not postos:
     st.info(
-        "Envie o CSV da ANP na barra lateral, informe UF e Município e clique em **Buscar postos**.\n\n"
-        "Baixe o CSV oficial em: gov.br/anp → Dados Abertos → "
+        "Use a **API oficial da ANP** (recomendado, mais rápido e completo) ou importe o "
+        "**CSV manual** na barra lateral, informe UF e Município e clique em buscar.\n\n"
+        "CSV oficial disponível em: gov.br/anp → Dados Abertos → "
         "Dados Cadastrais dos Revendedores Varejistas de Combustíveis Automotivos"
     )
+    if "debug_api" in st.session_state:
+        with st.expander("🔧 Detalhes técnicos da última busca via API (clique pra ver)"):
+            st.json(st.session_state["debug_api"])
     st.stop()
 
 for p in postos:
