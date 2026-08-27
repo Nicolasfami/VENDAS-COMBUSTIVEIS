@@ -253,9 +253,19 @@ def upsert_postos_api(postos_api: list):
 
 
 def get_postos_by_city(uf, municipio):
+    return get_postos_by_cities(uf, [municipio])
+
+
+def get_postos_by_cities(uf, municipios: list):
+    """Busca postos em uma ou mais cidades do mesmo estado de uma vez.
+    municipios já deve vir normalizado (maiúsculo, sem acento)."""
+    if not municipios:
+        return []
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
+    municipios_norm = [m.upper().strip() for m in municipios]
+    placeholders = ", ".join(["%s"] * len(municipios_norm))
+    cur.execute(f"""
         SELECT p.*,
                COALESCE(p.latitude, g.lat) as lat,
                COALESCE(p.longitude, g.lon) as lon,
@@ -267,8 +277,8 @@ def get_postos_by_city(uf, municipio):
         FROM postos p
         LEFT JOIN geocode_cache g ON g.endereco_completo = (p.endereco || ', ' || p.municipio || ', ' || p.uf)
         LEFT JOIN crm c ON c.cnpj = p.cnpj
-        WHERE p.uf = %s AND p.municipio = %s
-    """, (uf, municipio.upper()))
+        WHERE p.uf = %s AND p.municipio IN ({placeholders})
+    """, [uf] + municipios_norm)
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return rows
