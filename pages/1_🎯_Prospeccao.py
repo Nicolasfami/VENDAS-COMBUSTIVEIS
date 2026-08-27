@@ -70,10 +70,28 @@ def prioridade_label(score):
     return "C", "op-badge-c"
 
 
+@st.cache_data(ttl=86400)
+def carregar_municipios_ibge(uf):
+    """Cacheia por 24h pra não ficar consultando o IBGE toda hora."""
+    try:
+        return anp_api.listar_municipios(uf)
+    except Exception:
+        return []
+
+
 with st.sidebar:
     st.markdown("### 🔍 Região")
     uf = st.text_input("UF", value=st.session_state.get("uf_atual", "SP"), max_chars=2).upper()
-    municipio = st.text_input("Município", value=st.session_state.get("municipio_atual", "Jandira"))
+
+    municipios_disponiveis = carregar_municipios_ibge(uf) if len(uf) == 2 else []
+
+    if municipios_disponiveis:
+        municipio_salvo = st.session_state.get("municipio_atual", "Jandira")
+        index_padrao = municipios_disponiveis.index(municipio_salvo) if municipio_salvo in municipios_disponiveis else 0
+        municipio = st.selectbox("Município", options=municipios_disponiveis, index=index_padrao)
+    else:
+        municipio = st.text_input("Município", value=st.session_state.get("municipio_atual", "Jandira"))
+        st.caption("⚠️ Não consegui carregar a lista de cidades do IBGE agora — digite manualmente.")
 
     fonte = st.radio("Fonte dos dados", ["API oficial da ANP (recomendado)", "Importar CSV manual"])
 
@@ -154,7 +172,16 @@ for p in postos:
 
 postos_ordenados = sorted(postos, key=lambda p: -p["score"])
 
-st.subheader(f"{municipio_atual}/{uf_atual} — {len(postos)} posto(s)")
+st.subheader(f"{municipio_atual}/{uf_atual} — {len(postos)} posto(s) no total")
+
+bandeiras_disponiveis = sorted(set((p["bandeira"] or "Sem informação") for p in postos))
+bandeiras_selecionadas = st.multiselect(
+    "Filtrar por bandeira",
+    options=bandeiras_disponiveis,
+    default=bandeiras_disponiveis,
+)
+postos_ordenados = [p for p in postos_ordenados if (p["bandeira"] or "Sem informação") in bandeiras_selecionadas]
+st.caption(f"Mostrando {len(postos_ordenados)} de {len(postos)} posto(s)")
 
 if "selecionados" not in st.session_state:
     st.session_state["selecionados"] = set()
