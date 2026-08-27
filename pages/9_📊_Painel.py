@@ -9,7 +9,7 @@ st.set_page_config(page_title="Painel Geral", page_icon="📊", layout="wide")
 db.init_db()
 common.inject_css()
 common.seletor_vendedor_logado()
-common.header("Painel Geral", "Números consolidados de prospecção e vendas")
+common.header("Painel Geral", "Números consolidados de prospecção e vendas", icone="painel")
 
 PLOTLY_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
