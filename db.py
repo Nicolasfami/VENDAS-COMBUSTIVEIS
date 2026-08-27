@@ -530,6 +530,26 @@ def get_pedidos(vendedor_id=None, comprador_cnpj=None):
     return rows
 
 
+def get_serie_mensal_vendas(meses=6):
+    """Retorna volume/faturamento agrupado por mês (últimos N meses), em ordem
+    cronológica — usado pro gráfico de tendência no Painel Geral."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT LEFT(data_pedido, 7) as mes,
+               COALESCE(SUM(volume_litros), 0) as volume_total,
+               COALESCE(SUM(valor_total), 0) as valor_total
+        FROM pedidos
+        WHERE data_pedido IS NOT NULL AND data_pedido != ''
+        GROUP BY LEFT(data_pedido, 7)
+        ORDER BY mes DESC
+        LIMIT %s
+    """, (meses,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return list(reversed(rows))
+
+
 def get_volume_por_vendedor(mes_ano=None):
     """mes_ano no formato 'YYYY-MM'. Retorna litros vendidos (pedidos) por vendedor."""
     conn = get_conn()
