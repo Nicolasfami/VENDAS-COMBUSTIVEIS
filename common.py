@@ -9,14 +9,14 @@ import streamlit as st
 import db
 
 PALETTE = {
-    "bg": "#12181C",
-    "surface": "#1B242B",
-    "surface_2": "#222D35",
-    "border": "#2C3841",
-    "amber": "#F2A93B",
-    "amber_dim": "#8A6321",
-    "steel": "#3DA5D9",
-    "green": "#4C9A6A",
+    "bg": "#0B1220",
+    "surface": "#121C30",
+    "surface_2": "#182842",
+    "border": "#263654",
+    "amber": "#8DC63F",
+    "amber_dim": "#4E7A22",
+    "steel": "#3AA6A0",
+    "green": "#3FA796",
     "red": "#D9534F",
     "text": "#E8EAED",
     "muted": "#8B95A1",
@@ -26,13 +26,13 @@ PALETTE = {
 def inject_css():
     st.markdown(f"""
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         html, body, [class*="css"] {{
             font-family: 'Inter', sans-serif;
         }}
         h1, h2, h3 {{
-            font-family: 'Rajdhani', sans-serif !important;
+            font-family: 'Poppins', sans-serif !important;
             letter-spacing: 0.02em;
             text-transform: uppercase;
         }}
@@ -54,8 +54,17 @@ def inject_css():
             border-radius: 6px;
             margin-bottom: 22px;
         }}
+        .op-header .op-brand {{
+            font-family: 'Poppins', sans-serif;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            color: {PALETTE['amber']};
+            margin: 0 0 2px 0;
+            text-transform: uppercase;
+        }}
         .op-header .op-title {{
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Poppins', sans-serif;
             font-weight: 700;
             font-size: 26px;
             text-transform: uppercase;
@@ -111,7 +120,7 @@ def inject_css():
         }}
         div[data-testid="stButton"] > button[kind="primary"] {{
             background: {PALETTE['amber']};
-            color: #1A1200;
+            color: #0B1220;
         }}
         hr {{ border-color: {PALETTE['border']}; }}
     </style>
@@ -122,7 +131,8 @@ def header(titulo, subtitulo=""):
     st.markdown(f"""
     <div class="op-header">
         <div>
-            <p class="op-title">⛽ {titulo}</p>
+            <p class="op-brand">⛽ PetroSales</p>
+            <p class="op-title">{titulo}</p>
             <p class="op-subtitle">{subtitulo}</p>
         </div>
     </div>
@@ -155,7 +165,7 @@ def gauge_svg(percentual, label="META", size=150):
         <line x1="{cx}" y1="{cy}" x2="{x2}" y2="{y2}" stroke="{PALETTE['text']}" stroke-width="3" stroke-linecap="round"/>
         <circle cx="{cx}" cy="{cy}" r="5" fill="{PALETTE['text']}"/>
         <text x="75" y="100" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="16" font-weight="600" fill="{cor}">{percentual:.0f}%</text>
-        <text x="75" y="16" text-anchor="middle" font-family="Rajdhani, sans-serif" font-size="11" letter-spacing="1" fill="{PALETTE['muted']}">{label}</text>
+        <text x="75" y="16" text-anchor="middle" font-family="Poppins, sans-serif" font-size="11" letter-spacing="1" fill="{PALETTE['muted']}">{label}</text>
     </svg>
     """
     return svg
