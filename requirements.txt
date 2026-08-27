@@ -5,3 +5,4 @@ folium>=0.16
 streamlit-folium>=0.22
 requests>=2.31
 psycopg2-binary>=2.9
+plotly>=5.20
