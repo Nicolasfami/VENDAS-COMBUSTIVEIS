@@ -7,7 +7,7 @@ st.set_page_config(page_title="Equipe", page_icon="👥", layout="wide")
 db.init_db()
 common.inject_css()
 common.seletor_vendedor_logado()
-common.header("Equipe de Vendas", "Cadastro de vendedores e metas mensais de volume")
+common.header("Equipe de Vendas", "Cadastro de vendedores e metas mensais de volume", icone="equipe")
 
 with st.expander("➕ Novo vendedor"):
     c1, c2 = st.columns(2)
