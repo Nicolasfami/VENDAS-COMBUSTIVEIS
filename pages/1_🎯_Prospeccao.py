@@ -214,7 +214,7 @@ if "selecionados" not in st.session_state:
 for p in postos_ordenados:
     with st.container():
         st.markdown('<div class="op-card">', unsafe_allow_html=True)
-        cols = st.columns([0.4, 2.3, 1.1, 1, 1.2, 0.9, 0.9, 0.9])
+        cols = st.columns([0.3, 2, 1, 0.9, 1.1, 0.8, 0.8, 0.8, 0.9])
         with cols[0]:
             checked = st.checkbox("", key=f"chk_{p['cnpj']}",
                                    value=p["cnpj"] in st.session_state["selecionados"])
@@ -335,6 +335,30 @@ for p in postos_ordenados:
                     db.add_historico(p["cnpj"], str(date.today()), nota_rapida.strip())
                     st.success("Adicionado!")
                     st.rerun()
+        with cols[8]:
+            pedidos_posto = db.get_pedidos(comprador_cnpj=p["cnpj"])
+            rotulo_vendas = f"📦 Vendas ({len(pedidos_posto)})" if pedidos_posto else "📦 Vendas"
+            with st.popover(rotulo_vendas):
+                st.markdown(f"**Histórico de vendas — {p['razao_social']}**")
+                if pedidos_posto:
+                    volume_total_posto = sum(pe["volume_litros"] or 0 for pe in pedidos_posto)
+                    valor_total_posto = sum(pe["valor_total"] or 0 for pe in pedidos_posto)
+                    st.caption(f"Total: {volume_total_posto:,.0f} L · R$ {valor_total_posto:,.2f}")
+                    st.markdown("---")
+                    BADGE_ENTREGA = {"Pendente": "op-badge-b", "Entregue": "op-badge-green",
+                                      "Cancelado": "op-badge-red"}
+                    BADGE_PAGAMENTO = {"Em aberto": "op-badge-b", "Pago": "op-badge-green",
+                                        "Atrasado": "op-badge-red"}
+                    for pe in pedidos_posto:
+                        st.markdown(f"""
+                        <div class="op-card">
+                        <b>{pe['data_pedido']}</b> — {pe['produto']} — {pe['volume_litros']:,.0f} L — R$ {pe['valor_total']:,.2f}<br>
+                        <span class="op-badge {BADGE_ENTREGA.get(pe['status_entrega'], 'op-badge-c')}">{pe['status_entrega']}</span>
+                        <span class="op-badge {BADGE_PAGAMENTO.get(pe['status_pagamento'], 'op-badge-c')}">{pe['status_pagamento']}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.caption("Nenhuma venda registrada pra esse posto ainda. Use o botão 💰 Vender.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 st.caption(f"✅ {len(st.session_state['selecionados'])} posto(s) selecionado(s) para rota (aba Rota)")
