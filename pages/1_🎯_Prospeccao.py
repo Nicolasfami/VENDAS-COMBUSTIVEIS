@@ -214,157 +214,160 @@ st.caption(f"Mostrando {len(postos_ordenados)} de {len(postos)} posto(s)")
 if "selecionados" not in st.session_state:
     st.session_state["selecionados"] = set()
 
-for p in postos_ordenados:
-    with st.container():
-        st.markdown('<div class="op-card">', unsafe_allow_html=True)
-        cols = st.columns([0.3, 2, 1, 0.9, 1.1, 0.8, 0.8, 0.8, 0.9])
-        with cols[0]:
-            checked = st.checkbox("", key=f"chk_{p['cnpj']}",
-                                   value=p["cnpj"] in st.session_state["selecionados"])
-            if checked:
-                st.session_state["selecionados"].add(p["cnpj"])
-            else:
-                st.session_state["selecionados"].discard(p["cnpj"])
-        with cols[1]:
-            st.markdown(f"**{p['razao_social']}**")
-            st.caption(f"{p['endereco']}, {p['bairro']} — {p['municipio']}")
-            contato_partes = []
-            if p.get("responsavel"):
-                contato_partes.append(f"👤 {p['responsavel']}")
-            if p.get("telefone"):
-                contato_partes.append(f"📞 {p['telefone']}")
-            if p.get("whatsapp"):
-                contato_partes.append(f"💬 {p['whatsapp']}")
-            if contato_partes:
-                st.caption(" · ".join(contato_partes))
-            else:
-                st.caption("Sem contato cadastrado ainda (preencha no CRM após visitar)")
-        with cols[2]:
-            st.markdown(f"<span class='op-badge op-badge-b'>{p['bandeira']}</span>", unsafe_allow_html=True)
-        with cols[3]:
-            st.caption(f"Status: {p.get('status') or 'Não visitado'}")
-        with cols[4]:
-            st.markdown(
-                f"<span class='op-badge {p['badge_class']}'>PRIORIDADE {p['prioridade']} · {p['score']} pts</span>",
-                unsafe_allow_html=True)
-        with cols[5]:
-            with st.popover("Detalhes"):
-                st.write(f"CNPJ: {p['cnpj']}")
-                st.write(f"Autorização: {p['autorizacao']}")
-                st.write(f"CEP: {p['cep']}")
-                if p.get("origem_dado") == "API":
-                    st.write(f"Tancagem total: {p.get('tancagem_total_m3') or 0:.0f} m³")
-                    produtos = extrair_produtos(p)
-                    if produtos["lista"]:
-                        st.write("Produtos comercializados:")
-                        for prod in produtos["lista"]:
-                            st.write(f"- {prod['produto']}: {prod['tancagem']} {prod.get('unidMedidaTancagem','')} "
-                                     f"· {prod.get('qtdeBicos', 0)} bico(s)")
-                if p["motivos"]:
-                    st.write("Motivos do score:")
-                    for m in p["motivos"]:
-                        st.write(f"- {m}")
-        with cols[6]:
-            with st.popover("💰 Vender"):
-                st.markdown(f"**Registrar venda — {p['razao_social']}**")
-                with st.form(key=f"form_vender_{p['cnpj']}"):
-                    produto_venda = st.selectbox(
-                        "Produto", ["Gasolina", "Etanol", "Diesel S10", "Diesel S500", "Outro"])
-                    volume_venda = st.number_input("Volume (litros)", min_value=0.0, step=100.0)
-                    preco_venda = st.number_input(
-                        "Preço unitário (R$/L)", min_value=0.0, step=0.01, format="%.2f")
-                    confirmou_venda = st.form_submit_button("✅ Confirmar venda", type="primary")
-
-                if confirmou_venda:
-                    if volume_venda <= 0 or preco_venda <= 0:
-                        st.warning("Preencha volume e preço antes de confirmar.")
-                    else:
-                        if not db.get_comprador(p["cnpj"]):
-                            db.upsert_comprador(p["cnpj"], {
-                                "razao_social": p["razao_social"], "tipo": "Posto revendedor",
-                                "endereco": p["endereco"], "municipio": p["municipio"], "uf": p["uf"],
-                                "vendedor_id": vendedor["id"] if vendedor else None,
-                                "data_cadastro": str(date.today()),
-                            })
-                        comissao = db.get_comissao_produto(produto_venda)
-                        valor_total_venda = volume_venda * preco_venda
-                        db.add_pedido({
-                            "comprador_cnpj": p["cnpj"], "vendedor_id": vendedor["id"] if vendedor else None,
-                            "produto": produto_venda, "volume_litros": volume_venda,
-                            "preco_unitario": preco_venda, "valor_total": valor_total_venda,
-                            "data_pedido": str(date.today()), "status_entrega": "Pendente",
-                            "status_pagamento": "Em aberto",
-                            "comissao_vendedor_litro": comissao["comissao_vendedor_litro"],
-                            "comissao_empresa_litro": comissao["comissao_empresa_litro"],
-                            "comissao_vendedor_total": volume_venda * comissao["comissao_vendedor_litro"],
-                            "comissao_empresa_total": volume_venda * comissao["comissao_empresa_litro"],
-                        })
-                        db.update_crm(p["cnpj"], {"status": "Cliente",
-                                                   "vendedor_id": vendedor["id"] if vendedor else None})
-                        st.success(f"Venda de {volume_venda:,.0f} L registrada! Posto virou Cliente.")
-                        st.rerun()
-        with cols[7]:
-            with st.popover("📇 CRM"):
-                st.markdown(f"**Dados comerciais — {p['razao_social']}**")
-                status_opcoes = ["Não visitado", "Visitado", "Sem interesse", "Interessado",
-                                  "Cotação enviada", "Negociando", "Retornar", "Cliente"]
-
-                with st.form(key=f"form_crm_{p['cnpj']}"):
-                    status_crm = st.selectbox("Status", status_opcoes,
-                                               index=status_opcoes.index(p.get("status") or "Não visitado"))
-                    responsavel_crm = st.text_input("Responsável", value=p.get("responsavel") or "")
-                    telefone_crm = st.text_input("Telefone", value=p.get("telefone") or "")
-                    whatsapp_crm = st.text_input("WhatsApp", value=p.get("whatsapp") or "")
-                    fornecedor_crm = st.text_input("Fornecedor atual", value=p.get("fornecedor_atual") or "")
-                    obs_crm = st.text_area("Observações", value=p.get("observacoes") or "")
-                    salvou_crm = st.form_submit_button("💾 Salvar", type="primary")
-
-                if salvou_crm:
-                    db.update_crm(p["cnpj"], {
-                        "status": status_crm, "responsavel": responsavel_crm,
-                        "telefone": telefone_crm, "whatsapp": whatsapp_crm,
-                        "fornecedor_atual": fornecedor_crm, "observacoes": obs_crm,
-                        "vendedor_id": vendedor["id"] if vendedor else None,
-                    })
-                    st.success("Dados salvos!")
-                    st.rerun()
-
-                st.markdown("---")
-                with st.form(key=f"form_nota_{p['cnpj']}"):
-                    nota_rapida = st.text_area("Adicionar ao histórico", height=68)
-                    adicionou_nota = st.form_submit_button("➕ Adicionar ao histórico")
-
-                if adicionou_nota and nota_rapida.strip():
-                    db.add_historico(p["cnpj"], str(date.today()), nota_rapida.strip())
-                    st.success("Adicionado!")
-                    st.rerun()
-        with cols[8]:
-            pedidos_posto = db.get_pedidos(comprador_cnpj=p["cnpj"])
-            rotulo_vendas = f"📦 Vendas ({len(pedidos_posto)})" if pedidos_posto else "📦 Vendas"
-            with st.popover(rotulo_vendas):
-                st.markdown(f"**Histórico de vendas — {p['razao_social']}**")
-                if pedidos_posto:
-                    volume_total_posto = sum(pe["volume_litros"] or 0 for pe in pedidos_posto)
-                    valor_total_posto = sum(pe["valor_total"] or 0 for pe in pedidos_posto)
-                    st.caption(f"Total: {volume_total_posto:,.0f} L · R$ {valor_total_posto:,.2f}")
-                    st.markdown("---")
-                    BADGE_ENTREGA = {"Pendente": "op-badge-b", "Entregue": "op-badge-green",
-                                      "Cancelado": "op-badge-red"}
-                    BADGE_PAGAMENTO = {"Em aberto": "op-badge-b", "Pago": "op-badge-green",
-                                        "Atrasado": "op-badge-red"}
-                    for pe in pedidos_posto:
-                        st.markdown(f"""
-                        <div class="op-card">
-                        <b>{pe['data_pedido']}</b> — {pe['produto']} — {pe['volume_litros']:,.0f} L — R$ {pe['valor_total']:,.2f}<br>
-                        <span class="op-badge {BADGE_ENTREGA.get(pe['status_entrega'], 'op-badge-c')}">{pe['status_entrega']}</span>
-                        <span class="op-badge {BADGE_PAGAMENTO.get(pe['status_pagamento'], 'op-badge-c')}">{pe['status_pagamento']}</span>
-                        </div>
-                        """, unsafe_allow_html=True)
+@st.fragment
+def render_lista_postos():
+    for p in postos_ordenados:
+        with st.container():
+            st.markdown('<div class="op-card">', unsafe_allow_html=True)
+            cols = st.columns([0.3, 2, 1, 0.9, 1.1, 0.8, 0.8, 0.8, 0.9])
+            with cols[0]:
+                checked = st.checkbox("", key=f"chk_{p['cnpj']}",
+                                       value=p["cnpj"] in st.session_state["selecionados"])
+                if checked:
+                    st.session_state["selecionados"].add(p["cnpj"])
                 else:
-                    st.caption("Nenhuma venda registrada pra esse posto ainda. Use o botão 💰 Vender.")
-        st.markdown('</div>', unsafe_allow_html=True)
+                    st.session_state["selecionados"].discard(p["cnpj"])
+            with cols[1]:
+                st.markdown(f"**{p['razao_social']}**")
+                st.caption(f"{p['endereco']}, {p['bairro']} — {p['municipio']}")
+                contato_partes = []
+                if p.get("responsavel"):
+                    contato_partes.append(f"👤 {p['responsavel']}")
+                if p.get("telefone"):
+                    contato_partes.append(f"📞 {p['telefone']}")
+                if p.get("whatsapp"):
+                    contato_partes.append(f"💬 {p['whatsapp']}")
+                if contato_partes:
+                    st.caption(" · ".join(contato_partes))
+                else:
+                    st.caption("Sem contato cadastrado ainda (preencha no CRM após visitar)")
+            with cols[2]:
+                st.markdown(f"<span class='op-badge op-badge-b'>{p['bandeira']}</span>", unsafe_allow_html=True)
+            with cols[3]:
+                st.caption(f"Status: {p.get('status') or 'Não visitado'}")
+            with cols[4]:
+                st.markdown(
+                    f"<span class='op-badge {p['badge_class']}'>PRIORIDADE {p['prioridade']} · {p['score']} pts</span>",
+                    unsafe_allow_html=True)
+            with cols[5]:
+                with st.popover("Detalhes"):
+                    st.write(f"CNPJ: {p['cnpj']}")
+                    st.write(f"Autorização: {p['autorizacao']}")
+                    st.write(f"CEP: {p['cep']}")
+                    if p.get("origem_dado") == "API":
+                        st.write(f"Tancagem total: {p.get('tancagem_total_m3') or 0:.0f} m³")
+                        produtos = extrair_produtos(p)
+                        if produtos["lista"]:
+                            st.write("Produtos comercializados:")
+                            for prod in produtos["lista"]:
+                                st.write(f"- {prod['produto']}: {prod['tancagem']} {prod.get('unidMedidaTancagem','')} "
+                                         f"· {prod.get('qtdeBicos', 0)} bico(s)")
+                    if p["motivos"]:
+                        st.write("Motivos do score:")
+                        for m in p["motivos"]:
+                            st.write(f"- {m}")
+            with cols[6]:
+                with st.popover("💰 Vender"):
+                    st.markdown(f"**Registrar venda — {p['razao_social']}**")
+                    with st.form(key=f"form_vender_{p['cnpj']}"):
+                        produto_venda = st.selectbox(
+                            "Produto", ["Gasolina", "Etanol", "Diesel S10", "Diesel S500", "Outro"])
+                        volume_venda = st.number_input("Volume (litros)", min_value=0.0, step=100.0)
+                        preco_venda = st.number_input(
+                            "Preço unitário (R$/L)", min_value=0.0, step=0.01, format="%.2f")
+                        confirmou_venda = st.form_submit_button("✅ Confirmar venda", type="primary")
 
-st.caption(f"✅ {len(st.session_state['selecionados'])} posto(s) selecionado(s) para rota")
+                    if confirmou_venda:
+                        if volume_venda <= 0 or preco_venda <= 0:
+                            st.warning("Preencha volume e preço antes de confirmar.")
+                        else:
+                            if not db.get_comprador(p["cnpj"]):
+                                db.upsert_comprador(p["cnpj"], {
+                                    "razao_social": p["razao_social"], "tipo": "Posto revendedor",
+                                    "endereco": p["endereco"], "municipio": p["municipio"], "uf": p["uf"],
+                                    "vendedor_id": vendedor["id"] if vendedor else None,
+                                    "data_cadastro": str(date.today()),
+                                })
+                            comissao = db.get_comissao_produto(produto_venda)
+                            valor_total_venda = volume_venda * preco_venda
+                            db.add_pedido({
+                                "comprador_cnpj": p["cnpj"], "vendedor_id": vendedor["id"] if vendedor else None,
+                                "produto": produto_venda, "volume_litros": volume_venda,
+                                "preco_unitario": preco_venda, "valor_total": valor_total_venda,
+                                "data_pedido": str(date.today()), "status_entrega": "Pendente",
+                                "status_pagamento": "Em aberto",
+                                "comissao_vendedor_litro": comissao["comissao_vendedor_litro"],
+                                "comissao_empresa_litro": comissao["comissao_empresa_litro"],
+                                "comissao_vendedor_total": volume_venda * comissao["comissao_vendedor_litro"],
+                                "comissao_empresa_total": volume_venda * comissao["comissao_empresa_litro"],
+                            })
+                            db.update_crm(p["cnpj"], {"status": "Cliente",
+                                                       "vendedor_id": vendedor["id"] if vendedor else None})
+                            st.success(f"Venda de {volume_venda:,.0f} L registrada! Posto virou Cliente.")
+                            st.rerun()
+            with cols[7]:
+                with st.popover("📇 CRM"):
+                    st.markdown(f"**Dados comerciais — {p['razao_social']}**")
+                    status_opcoes = ["Não visitado", "Visitado", "Sem interesse", "Interessado",
+                                      "Cotação enviada", "Negociando", "Retornar", "Cliente"]
+
+                    with st.form(key=f"form_crm_{p['cnpj']}"):
+                        status_crm = st.selectbox("Status", status_opcoes,
+                                                   index=status_opcoes.index(p.get("status") or "Não visitado"))
+                        responsavel_crm = st.text_input("Responsável", value=p.get("responsavel") or "")
+                        telefone_crm = st.text_input("Telefone", value=p.get("telefone") or "")
+                        whatsapp_crm = st.text_input("WhatsApp", value=p.get("whatsapp") or "")
+                        fornecedor_crm = st.text_input("Fornecedor atual", value=p.get("fornecedor_atual") or "")
+                        obs_crm = st.text_area("Observações", value=p.get("observacoes") or "")
+                        salvou_crm = st.form_submit_button("💾 Salvar", type="primary")
+
+                    if salvou_crm:
+                        db.update_crm(p["cnpj"], {
+                            "status": status_crm, "responsavel": responsavel_crm,
+                            "telefone": telefone_crm, "whatsapp": whatsapp_crm,
+                            "fornecedor_atual": fornecedor_crm, "observacoes": obs_crm,
+                            "vendedor_id": vendedor["id"] if vendedor else None,
+                        })
+                        st.success("Dados salvos!")
+                        st.rerun()
+
+                    st.markdown("---")
+                    with st.form(key=f"form_nota_{p['cnpj']}"):
+                        nota_rapida = st.text_area("Adicionar ao histórico", height=68)
+                        adicionou_nota = st.form_submit_button("➕ Adicionar ao histórico")
+
+                    if adicionou_nota and nota_rapida.strip():
+                        db.add_historico(p["cnpj"], str(date.today()), nota_rapida.strip())
+                        st.success("Adicionado!")
+                        st.rerun()
+            with cols[8]:
+                pedidos_posto = db.get_pedidos(comprador_cnpj=p["cnpj"])
+                rotulo_vendas = f"📦 Vendas ({len(pedidos_posto)})" if pedidos_posto else "📦 Vendas"
+                with st.popover(rotulo_vendas):
+                    st.markdown(f"**Histórico de vendas — {p['razao_social']}**")
+                    if pedidos_posto:
+                        volume_total_posto = sum(pe["volume_litros"] or 0 for pe in pedidos_posto)
+                        valor_total_posto = sum(pe["valor_total"] or 0 for pe in pedidos_posto)
+                        st.caption(f"Total: {volume_total_posto:,.0f} L · R$ {valor_total_posto:,.2f}")
+                        st.markdown("---")
+                        BADGE_ENTREGA = {"Pendente": "op-badge-b", "Entregue": "op-badge-green",
+                                          "Cancelado": "op-badge-red"}
+                        BADGE_PAGAMENTO = {"Em aberto": "op-badge-b", "Pago": "op-badge-green",
+                                            "Atrasado": "op-badge-red"}
+                        for pe in pedidos_posto:
+                            st.markdown(f"""
+                            <div class="op-card">
+                            <b>{pe['data_pedido']}</b> — {pe['produto']} — {pe['volume_litros']:,.0f} L — R$ {pe['valor_total']:,.2f}<br>
+                            <span class="op-badge {BADGE_ENTREGA.get(pe['status_entrega'], 'op-badge-c')}">{pe['status_entrega']}</span>
+                            <span class="op-badge {BADGE_PAGAMENTO.get(pe['status_pagamento'], 'op-badge-c')}">{pe['status_pagamento']}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.caption("Nenhuma venda registrada pra esse posto ainda. Use o botão 💰 Vender.")
+            st.markdown('</div>', unsafe_allow_html=True)
+    st.caption(f"✅ {len(st.session_state['selecionados'])} posto(s) selecionado(s) para rota")
+
+render_lista_postos()
 
 # ============================================================
 # ROTA + MAPA (direto na Prospecção, sem precisar trocar de tela)
@@ -379,80 +382,85 @@ PIN_POR_STATUS = {
     "Retornar": "nao_visitado", "Cliente": "cliente",
 }
 
-selecionados_cnpj = st.session_state["selecionados"]
-postos_selecionados = [p for p in postos if p["cnpj"] in selecionados_cnpj]
+@st.fragment
+def render_secao_rota():
+    selecionados_cnpj = st.session_state["selecionados"]
+    postos_selecionados = [p for p in postos if p["cnpj"] in selecionados_cnpj]
 
-if not postos_selecionados:
-    st.info("Marque o checkbox dos postos que quer visitar (na lista acima) pra gerar a rota.")
-else:
-    st.markdown(
-        f"<div class='op-card op-accent'>{len(postos_selecionados)} posto(s) selecionado(s) pra rota</div>",
-        unsafe_allow_html=True)
+    if not postos_selecionados:
+        st.info("Marque o checkbox dos postos que quer visitar (na lista acima) pra gerar a rota.")
+    else:
+        st.markdown(
+            f"<div class='op-card op-accent'>{len(postos_selecionados)} posto(s) selecionado(s) pra rota</div>",
+            unsafe_allow_html=True)
 
-    usar_origem = st.checkbox("Definir ponto de partida (ex: seu endereço)")
-    origem_coord = None
-    if usar_origem:
-        endereco_origem = st.text_input("Endereço de partida", placeholder="Ex: Rua Exemplo, 100, Jandira, SP")
-        if endereco_origem:
-            origem_coord = geo_utils.geocode_endereco(endereco_origem, municipios_atual[0], uf_atual)
-            if not origem_coord:
-                st.warning("Não foi possível localizar esse endereço.")
+        usar_origem = st.checkbox("Definir ponto de partida (ex: seu endereço)")
+        origem_coord = None
+        if usar_origem:
+            endereco_origem = st.text_input("Endereço de partida", placeholder="Ex: Rua Exemplo, 100, Jandira, SP")
+            if endereco_origem:
+                origem_coord = geo_utils.geocode_endereco(endereco_origem, municipios_atual[0], uf_atual)
+                if not origem_coord:
+                    st.warning("Não foi possível localizar esse endereço.")
 
-    if st.button("🚗 Gerar rota otimizada", type="primary"):
-        with st.spinner("Geocodificando e otimizando..."):
-            for p in postos_selecionados:
-                if p.get("lat") is None:
-                    resultado = geo_utils.geocode_endereco(p["endereco"], p["municipio"], p["uf"], p.get("cep", ""))
-                    if resultado:
-                        p["lat"], p["lon"] = resultado
+        if st.button("🚗 Gerar rota otimizada", type="primary"):
+            with st.spinner("Geocodificando e otimizando..."):
+                for p in postos_selecionados:
+                    if p.get("lat") is None:
+                        resultado = geo_utils.geocode_endereco(p["endereco"], p["municipio"], p["uf"], p.get("cep", ""))
+                        if resultado:
+                            p["lat"], p["lon"] = resultado
 
-            pontos_validos = [p for p in postos_selecionados if p.get("lat")]
-            faltando = len(postos_selecionados) - len(pontos_validos)
-            if faltando:
-                st.warning(f"{faltando} posto(s) não geocodificados foram ignorados na rota.")
+                pontos_validos = [p for p in postos_selecionados if p.get("lat")]
+                faltando = len(postos_selecionados) - len(pontos_validos)
+                if faltando:
+                    st.warning(f"{faltando} posto(s) não geocodificados foram ignorados na rota.")
 
-            if pontos_validos:
-                rota = geo_utils.otimizar_rota(pontos_validos, origem=origem_coord)
-                st.session_state["rota_gerada"] = rota
-                st.session_state["rota_origem"] = origem_coord
+                if pontos_validos:
+                    rota = geo_utils.otimizar_rota(pontos_validos, origem=origem_coord)
+                    st.session_state["rota_gerada"] = rota
+                    st.session_state["rota_origem"] = origem_coord
 
-    if st.session_state.get("rota_gerada"):
-        rota = st.session_state["rota_gerada"]
-        origem_coord = st.session_state.get("rota_origem")
+        if st.session_state.get("rota_gerada"):
+            rota = st.session_state["rota_gerada"]
+            origem_coord = st.session_state.get("rota_origem")
 
-        st.markdown("#### Sequência de visitas")
-        for i, p in enumerate(rota, 1):
-            st.markdown(f"""
-            <div class="op-card op-accent">
-            <span class="op-badge op-badge-a">PARADA {i}</span>
-            &nbsp;&nbsp;<b>{p['razao_social']}</b> — {p['bairro']}
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown("#### Sequência de visitas")
+            for i, p in enumerate(rota, 1):
+                st.markdown(f"""
+                <div class="op-card op-accent">
+                <span class="op-badge op-badge-a">PARADA {i}</span>
+                &nbsp;&nbsp;<b>{p['razao_social']}</b> — {p['bairro']}
+                </div>
+                """, unsafe_allow_html=True)
 
-        link = geo_utils.gerar_link_google_maps_rota(rota, origem=origem_coord)
-        st.link_button("📲 Abrir rota no Google Maps", link, use_container_width=True)
+            link = geo_utils.gerar_link_google_maps_rota(rota, origem=origem_coord)
+            st.link_button("📲 Abrir rota no Google Maps", link, use_container_width=True)
 
-        st.markdown("#### Mapa da rota")
-        centro_lat = sum(p["lat"] for p in rota) / len(rota)
-        centro_lon = sum(p["lon"] for p in rota) / len(rota)
-        m = folium.Map(location=[centro_lat, centro_lon], zoom_start=12, tiles="CartoDB dark_matter")
+            st.markdown("#### Mapa da rota")
+            centro_lat = sum(p["lat"] for p in rota) / len(rota)
+            centro_lon = sum(p["lon"] for p in rota) / len(rota)
+            m = folium.Map(location=[centro_lat, centro_lon], zoom_start=12, tiles="CartoDB dark_matter")
 
-        for i, p in enumerate(rota, 1):
-            status = p.get("status") or "Não visitado"
-            nome_pin = PIN_POR_STATUS.get(status, "nao_visitado")
-            caminho_icone = common.pin_icon_path(nome_pin)
-            popup_html = f"<b>{i}. {p['razao_social']}</b><br>{p['bairro']}<br>Status: {status}"
+            for i, p in enumerate(rota, 1):
+                status = p.get("status") or "Não visitado"
+                nome_pin = PIN_POR_STATUS.get(status, "nao_visitado")
+                caminho_icone = common.pin_icon_path(nome_pin)
+                popup_html = f"<b>{i}. {p['razao_social']}</b><br>{p['bairro']}<br>Status: {status}"
 
-            if caminho_icone:
-                icon = folium.CustomIcon(icon_image=caminho_icone, icon_size=(36, 45), icon_anchor=(18, 45))
-            else:
-                icon = folium.Icon(color="gray", icon="tint", prefix="fa")
+                if caminho_icone:
+                    icon = folium.CustomIcon(icon_image=caminho_icone, icon_size=(36, 45), icon_anchor=(18, 45))
+                else:
+                    icon = folium.Icon(color="gray", icon="tint", prefix="fa")
 
-            folium.Marker(
-                location=[p["lat"], p["lon"]],
-                popup=folium.Popup(popup_html, max_width=220),
-                tooltip=f"{i}. {p['razao_social']}",
-                icon=icon,
-            ).add_to(m)
+                folium.Marker(
+                    location=[p["lat"], p["lon"]],
+                    popup=folium.Popup(popup_html, max_width=220),
+                    tooltip=f"{i}. {p['razao_social']}",
+                    icon=icon,
+                ).add_to(m)
 
-        st_folium(m, width=None, height=460, key="mapa_rota_prospeccao")
+            st_folium(m, width=None, height=460, key="mapa_rota_prospeccao")
+
+
+render_secao_rota()
