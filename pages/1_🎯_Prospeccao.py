@@ -202,13 +202,33 @@ postos_ordenados = sorted(postos, key=lambda p: -p["score"])
 
 st.subheader(f"{', '.join(municipios_atual)}/{uf_atual} — {len(postos)} posto(s) no total")
 
-bandeiras_disponiveis = sorted(set((p["bandeira"] or "Sem informação") for p in postos))
-bandeiras_selecionadas = st.multiselect(
-    "Filtrar por bandeira",
-    options=bandeiras_disponiveis,
-    default=bandeiras_disponiveis,
-)
-postos_ordenados = [p for p in postos_ordenados if (p["bandeira"] or "Sem informação") in bandeiras_selecionadas]
+filtro_col1, filtro_col2 = st.columns(2)
+with filtro_col1:
+    contagem_bandeiras = {}
+    for p in postos:
+        b = p["bandeira"] or "Sem informação"
+        contagem_bandeiras[b] = contagem_bandeiras.get(b, 0) + 1
+    bandeiras_disponiveis = sorted(contagem_bandeiras.keys())
+    bandeiras_selecionadas = st.multiselect(
+        "Filtrar por bandeira",
+        options=bandeiras_disponiveis,
+        default=bandeiras_disponiveis,
+        format_func=lambda b: f"{b} ({contagem_bandeiras[b]} posto{'s' if contagem_bandeiras[b] != 1 else ''})",
+    )
+with filtro_col2:
+    contagem_bairros = {}
+    for p in postos:
+        b = p["bairro"] or "Sem informação"
+        contagem_bairros[b] = contagem_bairros.get(b, 0) + 1
+    bairros_disponiveis = sorted(contagem_bairros.keys())
+    bairros_selecionados = st.multiselect(
+        "Filtrar por bairro",
+        options=bairros_disponiveis,
+        default=bairros_disponiveis,
+        format_func=lambda b: f"{b} ({contagem_bairros[b]} posto{'s' if contagem_bairros[b] != 1 else ''})",
+    )
+postos_ordenados = [p for p in postos_ordenados if (p["bandeira"] or "Sem informação") in bandeiras_selecionadas
+                     and (p["bairro"] or "Sem informação") in bairros_selecionados]
 st.caption(f"Mostrando {len(postos_ordenados)} de {len(postos)} posto(s)")
 
 if "selecionados" not in st.session_state:
