@@ -2,9 +2,12 @@ import streamlit as st
 import pandas as pd
 import json
 from datetime import date
+import folium
+from streamlit_folium import st_folium
 import db
 import common
 import anp_api
+import geo_utils
 
 st.set_page_config(page_title="Prospecção", page_icon="🎯", layout="wide")
 db.init_db()
@@ -361,4 +364,95 @@ for p in postos_ordenados:
                     st.caption("Nenhuma venda registrada pra esse posto ainda. Use o botão 💰 Vender.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-st.caption(f"✅ {len(st.session_state['selecionados'])} posto(s) selecionado(s) para rota (aba Rota)")
+st.caption(f"✅ {len(st.session_state['selecionados'])} posto(s) selecionado(s) para rota")
+
+# ============================================================
+# ROTA + MAPA (direto na Prospecção, sem precisar trocar de tela)
+# ============================================================
+
+st.markdown("---")
+st.markdown("## 🚗 Gerar Rota")
+
+PIN_POR_STATUS = {
+    "Não visitado": "nao_visitado", "Visitado": "visitado", "Sem interesse": "sem_interesse",
+    "Interessado": "interessado", "Cotação enviada": "cotacao_enviada", "Negociando": "negociando",
+    "Retornar": "nao_visitado", "Cliente": "cliente",
+}
+
+selecionados_cnpj = st.session_state["selecionados"]
+postos_selecionados = [p for p in postos if p["cnpj"] in selecionados_cnpj]
+
+if not postos_selecionados:
+    st.info("Marque o checkbox dos postos que quer visitar (na lista acima) pra gerar a rota.")
+else:
+    st.markdown(
+        f"<div class='op-card op-accent'>{len(postos_selecionados)} posto(s) selecionado(s) pra rota</div>",
+        unsafe_allow_html=True)
+
+    usar_origem = st.checkbox("Definir ponto de partida (ex: seu endereço)")
+    origem_coord = None
+    if usar_origem:
+        endereco_origem = st.text_input("Endereço de partida", placeholder="Ex: Rua Exemplo, 100, Jandira, SP")
+        if endereco_origem:
+            origem_coord = geo_utils.geocode_endereco(endereco_origem, municipios_atual[0], uf_atual)
+            if not origem_coord:
+                st.warning("Não foi possível localizar esse endereço.")
+
+    if st.button("🚗 Gerar rota otimizada", type="primary"):
+        with st.spinner("Geocodificando e otimizando..."):
+            for p in postos_selecionados:
+                if p.get("lat") is None:
+                    resultado = geo_utils.geocode_endereco(p["endereco"], p["municipio"], p["uf"], p.get("cep", ""))
+                    if resultado:
+                        p["lat"], p["lon"] = resultado
+
+            pontos_validos = [p for p in postos_selecionados if p.get("lat")]
+            faltando = len(postos_selecionados) - len(pontos_validos)
+            if faltando:
+                st.warning(f"{faltando} posto(s) não geocodificados foram ignorados na rota.")
+
+            if pontos_validos:
+                rota = geo_utils.otimizar_rota(pontos_validos, origem=origem_coord)
+                st.session_state["rota_gerada"] = rota
+                st.session_state["rota_origem"] = origem_coord
+
+    if st.session_state.get("rota_gerada"):
+        rota = st.session_state["rota_gerada"]
+        origem_coord = st.session_state.get("rota_origem")
+
+        st.markdown("#### Sequência de visitas")
+        for i, p in enumerate(rota, 1):
+            st.markdown(f"""
+            <div class="op-card op-accent">
+            <span class="op-badge op-badge-a">PARADA {i}</span>
+            &nbsp;&nbsp;<b>{p['razao_social']}</b> — {p['bairro']}
+            </div>
+            """, unsafe_allow_html=True)
+
+        link = geo_utils.gerar_link_google_maps_rota(rota, origem=origem_coord)
+        st.link_button("📲 Abrir rota no Google Maps", link, use_container_width=True)
+
+        st.markdown("#### Mapa da rota")
+        centro_lat = sum(p["lat"] for p in rota) / len(rota)
+        centro_lon = sum(p["lon"] for p in rota) / len(rota)
+        m = folium.Map(location=[centro_lat, centro_lon], zoom_start=12, tiles="CartoDB dark_matter")
+
+        for i, p in enumerate(rota, 1):
+            status = p.get("status") or "Não visitado"
+            nome_pin = PIN_POR_STATUS.get(status, "nao_visitado")
+            caminho_icone = common.pin_icon_path(nome_pin)
+            popup_html = f"<b>{i}. {p['razao_social']}</b><br>{p['bairro']}<br>Status: {status}"
+
+            if caminho_icone:
+                icon = folium.CustomIcon(icon_image=caminho_icone, icon_size=(36, 45), icon_anchor=(18, 45))
+            else:
+                icon = folium.Icon(color="gray", icon="tint", prefix="fa")
+
+            folium.Marker(
+                location=[p["lat"], p["lon"]],
+                popup=folium.Popup(popup_html, max_width=220),
+                tooltip=f"{i}. {p['razao_social']}",
+                icon=icon,
+            ).add_to(m)
+
+        st_folium(m, width=None, height=460, key="mapa_rota_prospeccao")
