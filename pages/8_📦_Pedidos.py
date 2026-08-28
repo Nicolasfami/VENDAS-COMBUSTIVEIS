@@ -1,11 +1,13 @@
 import streamlit as st
 from datetime import date
+import pandas as pd
 import db
 import common
 
 st.set_page_config(page_title="Pedidos", page_icon="📦", layout="wide")
 db.init_db()
 common.inject_css()
+common.mostrar_logo()
 vendedor = common.seletor_vendedor_logado()
 common.header("Pedidos", "Vendas fechadas — entrega e pagamento", icone="pedidos")
 
@@ -50,58 +52,107 @@ with st.expander("➕ Novo pedido manual"):
         st.rerun()
 
 st.markdown("---")
-c1, c2 = st.columns(2)
+c1, c2, c3 = st.columns(3)
 with c1:
     filtro_entrega = st.selectbox("Status de entrega", [None, "Pendente", "Entregue", "Cancelado"],
                                    format_func=lambda x: "Todos" if x is None else x)
 with c2:
     filtro_pagamento = st.selectbox("Status de pagamento", [None, "Em aberto", "Pago", "Atrasado"],
                                      format_func=lambda x: "Todos" if x is None else x)
+with c3:
+    vendedores_disponiveis = db.get_vendedores()
+    nomes_vend = {v["id"]: v["nome"] for v in vendedores_disponiveis}
+    filtro_vendedor = st.selectbox("Vendedor", [None] + list(nomes_vend.keys()),
+                                    format_func=lambda x: "Todos" if x is None else nomes_vend[x])
 
 pedidos = db.get_pedidos()
 if filtro_entrega:
     pedidos = [p for p in pedidos if p["status_entrega"] == filtro_entrega]
 if filtro_pagamento:
     pedidos = [p for p in pedidos if p["status_pagamento"] == filtro_pagamento]
+if filtro_vendedor:
+    pedidos = [p for p in pedidos if p["vendedor_id"] == filtro_vendedor]
 
 if not pedidos:
     st.info("Nenhum pedido encontrado.")
     st.stop()
 
-BADGE_ENTREGA = {"Pendente": "op-badge-b", "Entregue": "op-badge-green", "Cancelado": "op-badge-red"}
-BADGE_PAGAMENTO = {"Em aberto": "op-badge-b", "Pago": "op-badge-green", "Atrasado": "op-badge-red"}
+# ============================================================
+# TABELA COLORIDA POR STATUS DE PAGAMENTO
+# ============================================================
 
+CORES_FUNDO_PAGAMENTO = {
+    "Em aberto": "#4A3C12",   # amarelo escuro — aguardando pagamento
+    "Pago": "#123A24",        # verde escuro — pago
+    "Atrasado": "#3A1414",    # vermelho escuro — atrasado
+}
+CORES_TEXTO_PAGAMENTO = {
+    "Em aberto": "#F2C14E",
+    "Pago": "#4ADE80",
+    "Atrasado": "#F87171",
+}
+ICONES_ENTREGA = {"Pendente": "⏳ Pendente", "Entregue": "✅ Entregue", "Cancelado": "❌ Cancelado"}
+
+linhas = []
 for p in pedidos:
-    st.markdown('<div class="op-card">', unsafe_allow_html=True)
-    cols = st.columns([2, 1.1, 1.1, 1.3, 1.3, 1.6])
-    with cols[0]:
-        st.markdown(f"**{p['comprador_nome']}**")
-        st.caption(f"Pedido #{p['id']} · {p['vendedor_nome'] or '—'} · {p['data_pedido']}")
-        if p.get("comissao_vendedor_total"):
-            st.caption(f"💰 Comissão: R$ {p['comissao_vendedor_total']:,.2f} (vendedor) "
-                       f"· R$ {p.get('comissao_empresa_total', 0):,.2f} (empresa)")
-    with cols[1]:
-        st.write(p["produto"])
-    with cols[2]:
-        st.write(f"{p['volume_litros']:,.0f} L")
-    with cols[3]:
-        st.write(f"R$ {p['valor_total']:,.2f}")
-    with cols[4]:
-        st.markdown(f"<span class='op-badge {BADGE_ENTREGA.get(p['status_entrega'],'op-badge-c')}'>"
-                     f"{p['status_entrega']}</span>", unsafe_allow_html=True)
-    with cols[5]:
-        with st.popover("Atualizar"):
-            novo_status_entrega = st.selectbox("Entrega", ["Pendente", "Entregue", "Cancelado"],
-                                                index=["Pendente", "Entregue", "Cancelado"].index(p["status_entrega"]),
-                                                key=f"se_{p['id']}")
-            novo_status_pagamento = st.selectbox("Pagamento", ["Em aberto", "Pago", "Atrasado"],
-                                                  index=["Em aberto", "Pago", "Atrasado"].index(p["status_pagamento"]),
-                                                  key=f"sp_{p['id']}")
-            if st.button("Salvar", key=f"save_{p['id']}"):
-                db.update_pedido(p["id"], {
-                    "status_entrega": novo_status_entrega,
-                    "status_pagamento": novo_status_pagamento,
-                })
-                st.success("Atualizado!")
-                st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    linhas.append({
+        "Pedido": f"#{p['id']}",
+        "Comprador": p["comprador_nome"] or "—",
+        "Vendedor": p["vendedor_nome"] or "—",
+        "Produto": p["produto"],
+        "Volume (L)": p["volume_litros"] or 0,
+        "Valor (R$)": p["valor_total"] or 0,
+        "Data": p["data_pedido"] or "—",
+        "Entrega": ICONES_ENTREGA.get(p["status_entrega"], p["status_entrega"]),
+        "Pagamento": p["status_pagamento"],
+        "Comissão vend. (R$)": p.get("comissao_vendedor_total") or 0,
+    })
+df = pd.DataFrame(linhas)
+
+
+def colorir_linha(row):
+    cor_fundo = CORES_FUNDO_PAGAMENTO.get(row["Pagamento"], "")
+    cor_texto = CORES_TEXTO_PAGAMENTO.get(row["Pagamento"], "#EDF1F7")
+    estilo = f"background-color: {cor_fundo}; color: {cor_texto}" if cor_fundo else ""
+    return [estilo] * len(row)
+
+
+styled = (
+    df.style
+    .apply(colorir_linha, axis=1)
+    .format({"Volume (L)": "{:,.0f}", "Valor (R$)": "R$ {:,.2f}", "Comissão vend. (R$)": "R$ {:,.2f}"})
+)
+st.dataframe(styled, use_container_width=True, hide_index=True)
+
+st.caption("🟡 Amarelo = aguardando pagamento · 🟢 Verde = pago · 🔴 Vermelho = atrasado")
+
+# ============================================================
+# ATUALIZAR STATUS DE UM PEDIDO
+# ============================================================
+
+st.markdown("### Atualizar status de um pedido")
+opcoes_pedido = {p["id"]: f"#{p['id']} — {p['comprador_nome']} — {p['produto']} ({p['volume_litros']:,.0f} L)"
+                  for p in pedidos}
+pedido_escolhido_id = st.selectbox("Selecione o pedido", options=list(opcoes_pedido.keys()),
+                                    format_func=lambda x: opcoes_pedido[x])
+pedido_escolhido = next(p for p in pedidos if p["id"] == pedido_escolhido_id)
+
+with st.form(key="form_atualizar_pedido"):
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        novo_status_entrega = st.selectbox(
+            "Status de entrega", ["Pendente", "Entregue", "Cancelado"],
+            index=["Pendente", "Entregue", "Cancelado"].index(pedido_escolhido["status_entrega"]))
+    with fc2:
+        novo_status_pagamento = st.selectbox(
+            "Status de pagamento", ["Em aberto", "Pago", "Atrasado"],
+            index=["Em aberto", "Pago", "Atrasado"].index(pedido_escolhido["status_pagamento"]))
+    salvou = st.form_submit_button("💾 Salvar", type="primary")
+
+if salvou:
+    db.update_pedido(pedido_escolhido_id, {
+        "status_entrega": novo_status_entrega,
+        "status_pagamento": novo_status_pagamento,
+    })
+    st.success("Atualizado!")
+    st.rerun()
