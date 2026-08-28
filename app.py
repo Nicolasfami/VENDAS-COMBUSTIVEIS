@@ -57,9 +57,7 @@ st.markdown(f"""
 <div class="op-card">
 <b>Navegação</b><br>
 <span style="color:{common.PALETTE['muted']}">
-🎯 <b>Prospecção</b> — encontrar postos por região via base da ANP<br>
-🗺️ <b>Mapa</b> — visualizar os postos geograficamente<br>
-🚗 <b>Rota</b> — montar rota otimizada de visitas<br>
+🎯 <b>Prospecção</b> — encontrar postos por região via base da ANP, e já gerar a rota de visitas direto ali<br>
 📇 <b>CRM</b> — histórico de contato posto a posto<br>
 👥 <b>Equipe</b> — cadastro de vendedores e metas<br>
 🏪 <b>Compradores</b> — cadastro de clientes e histórico financeiro<br>
