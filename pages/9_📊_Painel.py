@@ -28,36 +28,111 @@ CORES_STATUS = {
 }
 
 # ============================================================
-# RESUMO FINANCEIRO — logo no topo, é o que mais importa
+# RESUMO FINANCEIRO — com filtro de período (dia/mês/ano/personalizado)
 # ============================================================
 
-mes_atual = date.today().strftime("%Y-%m")
-volumes = db.get_volume_por_vendedor(mes_atual)
+st.subheader("💰 Resumo financeiro")
+
+periodo_opcao = st.radio(
+    "Período", ["Hoje", "Este mês", "Este ano", "Personalizado"],
+    horizontal=True, index=1,
+)
+
+hoje = date.today()
+if periodo_opcao == "Hoje":
+    data_inicio, data_fim = hoje, hoje
+elif periodo_opcao == "Este mês":
+    data_inicio, data_fim = hoje.replace(day=1), hoje
+elif periodo_opcao == "Este ano":
+    data_inicio, data_fim = hoje.replace(month=1, day=1), hoje
+else:
+    col_data1, col_data2 = st.columns(2)
+    with col_data1:
+        data_inicio = st.date_input("De", value=hoje.replace(day=1))
+    with col_data2:
+        data_fim = st.date_input("Até", value=hoje)
+
+data_inicio_str = str(data_inicio)
+data_fim_str = str(data_fim)
+
 todos_pedidos = db.get_pedidos()
 todas_cotacoes = db.get_cotacoes()
-comissoes_mes = db.get_comissoes_por_vendedor(mes_atual)
 
-volume_total_mes = sum(v["volume_total"] for v in volumes)
-valor_total_mes = sum(v["valor_total"] for v in volumes)
+pedidos_periodo = [
+    p for p in todos_pedidos
+    if p.get("data_pedido") and data_inicio_str <= p["data_pedido"] <= data_fim_str
+]
+
+volume_periodo = sum(p["volume_litros"] or 0 for p in pedidos_periodo)
+valor_periodo = sum(p["valor_total"] or 0 for p in pedidos_periodo)
+comissao_vendedores_periodo = sum(p.get("comissao_vendedor_total") or 0 for p in pedidos_periodo)
+comissao_empresa_periodo = sum(p.get("comissao_empresa_total") or 0 for p in pedidos_periodo)
 em_aberto = sum(p["valor_total"] or 0 for p in todos_pedidos if p["status_pagamento"] == "Em aberto")
 atrasado = sum(p["valor_total"] or 0 for p in todos_pedidos if p["status_pagamento"] == "Atrasado")
-comissao_vendedores_mes = sum(v["comissao_vendedor"] for v in comissoes_mes)
-comissao_empresa_mes = sum(v["comissao_empresa"] for v in comissoes_mes)
 
-st.subheader(f"💰 Resumo financeiro — {mes_atual}")
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Volume vendido", f"{volume_total_mes:,.0f} L")
-c2.metric("Faturamento", f"R$ {valor_total_mes:,.2f}")
-c3.metric("Comissão vendedores", f"R$ {comissao_vendedores_mes:,.2f}")
-c4.metric("Margem empresa/refinaria", f"R$ {comissao_empresa_mes:,.2f}")
+c1.metric("Volume vendido", f"{volume_periodo:,.0f} L")
+c2.metric("Faturamento", f"R$ {valor_periodo:,.2f}")
+c3.metric("Comissão vendedores", f"R$ {comissao_vendedores_periodo:,.2f}")
+c4.metric("Margem empresa/refinaria", f"R$ {comissao_empresa_periodo:,.2f}")
 
 c5, c6 = st.columns(2)
 c5.metric("Em aberto (todos os meses)", f"R$ {em_aberto:,.2f}")
 c6.metric("Atrasado", f"R$ {atrasado:,.2f}")
 
+# ---------- Status de conclusão das vendas ----------
+st.markdown("###### Status das vendas no período")
+total_pedidos_periodo = len(pedidos_periodo)
+concluidas = sum(1 for p in pedidos_periodo if p["status_pagamento"] == "Pago" and p["status_entrega"] == "Entregue")
+em_andamento = total_pedidos_periodo - concluidas
+sc1, sc2, sc3 = st.columns(3)
+sc1.metric("Total de pedidos", total_pedidos_periodo)
+sc2.metric("✅ Concluídas (pago + entregue)", concluidas)
+sc3.metric("⏳ Em andamento", em_andamento)
+
+col_e, col_f = st.columns(2)
+with col_e:
+    contagem_pagamento = {}
+    for p in pedidos_periodo:
+        s = p["status_pagamento"]
+        contagem_pagamento[s] = contagem_pagamento.get(s, 0) + 1
+    if contagem_pagamento:
+        cores_pag = {"Em aberto": "#F2C14E", "Pago": "#4ADE80", "Atrasado": "#F87171"}
+        labels_pag = list(contagem_pagamento.keys())
+        fig_pag = go.Figure(data=[go.Bar(
+            x=labels_pag, y=[contagem_pagamento[k] for k in labels_pag],
+            marker=dict(color=[cores_pag.get(k, common.PALETTE["muted"]) for k in labels_pag]),
+            text=[contagem_pagamento[k] for k in labels_pag], textposition="outside",
+        )])
+        fig_pag.update_layout(title="Pedidos por status de pagamento", **PLOTLY_LAYOUT,
+                               yaxis=dict(gridcolor=common.PALETTE["border"]))
+        st.plotly_chart(fig_pag, use_container_width=True)
+    else:
+        st.caption("Nenhum pedido no período selecionado.")
+
+with col_f:
+    contagem_produto = {}
+    for p in pedidos_periodo:
+        contagem_produto[p["produto"]] = contagem_produto.get(p["produto"], 0) + (p["volume_litros"] or 0)
+    if contagem_produto:
+        produtos_ordenados = sorted(contagem_produto.items(), key=lambda x: -x[1])
+        fig_produtos = go.Figure(data=[go.Bar(
+            x=[x[1] for x in produtos_ordenados], y=[x[0] for x in produtos_ordenados], orientation="h",
+            marker=dict(color=common.PALETTE["amber"]),
+            text=[f"{x[1]:,.0f} L" for x in produtos_ordenados], textposition="outside",
+        )])
+        fig_produtos.update_layout(title="Produtos mais vendidos (volume)", **PLOTLY_LAYOUT,
+                                    xaxis=dict(gridcolor=common.PALETTE["border"]),
+                                    yaxis=dict(autorange="reversed"))
+        st.plotly_chart(fig_produtos, use_container_width=True)
+    else:
+        st.caption("Nenhum produto vendido no período selecionado.")
+
 col_c, col_d = st.columns(2)
 
 with col_c:
+    mes_atual = date.today().strftime("%Y-%m")
+    volumes = db.get_volume_por_vendedor(mes_atual)
     volumes_com_vendas = [v for v in volumes if v["volume_total"] > 0]
     if volumes_com_vendas:
         volumes_ordenados = sorted(volumes_com_vendas, key=lambda x: x["volume_total"])
