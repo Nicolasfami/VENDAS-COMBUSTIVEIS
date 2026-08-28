@@ -390,6 +390,83 @@ def render_lista_postos():
 render_lista_postos()
 
 # ============================================================
+# MAPA GERAL — todos os postos, clique pra selecionar/desselecionar
+# ============================================================
+
+st.markdown("---")
+st.markdown("## 🗺️ Mapa de Todos os Postos")
+st.caption("Clique num marcador do mapa pra marcar/desmarcar ele pra rota (mesma seleção da lista acima).")
+
+PIN_POR_STATUS_MAPA = {
+    "Não visitado": "nao_visitado", "Visitado": "visitado", "Sem interesse": "sem_interesse",
+    "Interessado": "interessado", "Cotação enviada": "cotacao_enviada", "Negociando": "negociando",
+    "Retornar": "nao_visitado", "Cliente": "cliente",
+}
+
+
+@st.fragment
+def render_mapa_geral():
+    postos_com_coord = [p for p in postos_ordenados if p.get("lat")]
+
+    if not postos_com_coord:
+        with st.spinner("Geocodificando endereços pro mapa (pode levar um tempinho)..."):
+            for p in postos_ordenados:
+                if p.get("lat") is None:
+                    resultado = geo_utils.geocode_endereco(p["endereco"], p["municipio"], p["uf"], p.get("cep", ""))
+                    if resultado:
+                        p["lat"], p["lon"] = resultado
+        postos_com_coord = [p for p in postos_ordenados if p.get("lat")]
+
+    if not postos_com_coord:
+        st.warning("Não foi possível geocodificar nenhum endereço ainda.")
+        return
+
+    centro_lat = sum(p["lat"] for p in postos_com_coord) / len(postos_com_coord)
+    centro_lon = sum(p["lon"] for p in postos_com_coord) / len(postos_com_coord)
+    m_geral = folium.Map(location=[centro_lat, centro_lon], zoom_start=12, tiles="CartoDB dark_matter")
+
+    for p in postos_com_coord:
+        status = p.get("status") or "Não visitado"
+        nome_pin = PIN_POR_STATUS_MAPA.get(status, "nao_visitado")
+        caminho_icone = common.pin_icon_path(nome_pin)
+        selecionado = p["cnpj"] in st.session_state["selecionados"]
+        marca = "✅ SELECIONADO<br>" if selecionado else ""
+        popup_html = f"{marca}<b>{p['razao_social']}</b><br>{p['bairro']}<br>Status: {status}"
+
+        if caminho_icone:
+            icon = folium.CustomIcon(icon_image=caminho_icone, icon_size=(34, 42), icon_anchor=(17, 42))
+        else:
+            icon = folium.Icon(color="gray", icon="tint", prefix="fa")
+
+        folium.Marker(
+            location=[p["lat"], p["lon"]],
+            tooltip=f"{'✅ ' if selecionado else ''}{p['razao_social']}",
+            popup=folium.Popup(popup_html, max_width=220),
+            icon=icon,
+        ).add_to(m_geral)
+
+    resultado_mapa = st_folium(m_geral, width=None, height=500, key="mapa_geral_prospeccao",
+                                returned_objects=["last_object_clicked"])
+
+    if resultado_mapa and resultado_mapa.get("last_object_clicked"):
+        lat_clicado = resultado_mapa["last_object_clicked"]["lat"]
+        lon_clicado = resultado_mapa["last_object_clicked"]["lng"]
+        click_atual = (round(lat_clicado, 6), round(lon_clicado, 6))
+
+        if click_atual != st.session_state.get("ultimo_click_mapa"):
+            st.session_state["ultimo_click_mapa"] = click_atual
+            for p in postos_com_coord:
+                if abs(p["lat"] - lat_clicado) < 0.0001 and abs(p["lon"] - lon_clicado) < 0.0001:
+                    if p["cnpj"] in st.session_state["selecionados"]:
+                        st.session_state["selecionados"].discard(p["cnpj"])
+                    else:
+                        st.session_state["selecionados"].add(p["cnpj"])
+                    st.rerun()
+
+
+render_mapa_geral()
+
+# ============================================================
 # ROTA + MAPA (direto na Prospecção, sem precisar trocar de tela)
 # ============================================================
 
